@@ -370,19 +370,24 @@ bool isStringLiteral(FILE *input, char *lexeme, int *lineNumber, char *filename)
             switch (c)
             {
             case 'n':
-                lexeme[i++] = '\n';
+                lexeme[i++] = '\\';
+                lexeme[i++] = 'n';
                 break;
             case 't':
-                lexeme[i++] = '\t';
+                lexeme[i++] = '\\';
+                lexeme[i++] = 't';
                 break;
             case 'r':
-                lexeme[i++] = '\r';
+                lexeme[i++] = '\\';
+                lexeme[i++] = 'r';
                 break;
             case 'a':
-                lexeme[i++] = '\a';
+                lexeme[i++] = '\\';
+                lexeme[i++] = 'a';
                 break;
             case 'b':
-                lexeme[i++] = '\b';
+                lexeme[i++] = '\\';
+                lexeme[i++] = 'b';
                 break;
             case '\\':
                 lexeme[i++] = '\\';
@@ -427,10 +432,10 @@ bool isCharLiteral(FILE *input, char *filename, char *lexeme, int *lineNumber)
         {
         case 'a':
         case 'b':
-        case 'n':
-        case 'r':
-        case '\\':
         case '\'':
+        case 'r':
+        case 'n':
+        case '\\':
             lexeme[i++] = c;
             break;
         default:
