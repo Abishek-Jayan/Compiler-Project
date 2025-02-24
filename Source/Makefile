@@ -2,10 +2,17 @@ CC = gcc
 CFLAGS = -Wall -Wextra -pedantic
 TARGET = mycc
 
+SRCS = main.c lexer.c
+
+OBJS = $(SRCS:.c=.o)
+
 all: $(TARGET)
 
-$(TARGET): main.c
-	$(CC) $(CFLAGS) main.c -o $(TARGET)
+$(TARGET): $(OBJS)
+	$(CC) $(CFLAGS) $(OBJS) -o $(TARGET)
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(TARGET)
+	rm -f $(TARGET) $(OBJS)
