@@ -1,1 +1,3 @@
 Source/mycc
+Source/*.o
+Source/*.lexer
