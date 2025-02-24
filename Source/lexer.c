@@ -67,173 +67,199 @@
 #define TOKEN_MUL_ASSIGN 363
 #define TOKEN_DIV_ASSIGN 364
 
-// Function prototypes
 
-void lexer(FILE* input, char* filename, FILE* output);
-int getNextToken(FILE* input, FILE* output, char* lexeme, int* lineNumber);
-void printToken(FILE* output, char* filename, int* lineNumber, int token, const char* lexeme);
-bool isKeyword(const char* lexeme);
-bool isType(const char* lexeme);
-bool isOperator(const char* lexeme);
+void lexer(FILE *input, char *filename, FILE *output);
+int getNextToken(FILE *input, FILE *output, char *lexeme, int *lineNumber);
+void printToken(FILE *output, char *filename, int *lineNumber, int token, const char *lexeme);
+bool isKeyword(const char *lexeme);
+bool isType(const char *lexeme);
+bool isOperator(const char *lexeme);
 bool isSymbol(char c);
 bool isWhitespace(char c);
-bool isComment(FILE* input, int* lineNumber);
-bool isStringLiteral(FILE* input, char* lexeme, int* lineNumber);
-bool isCharLiteral(FILE *input, char* lexeme, int* lineNumber);
-int isNumber(FILE* input, char* lexeme);
-bool isIdentifier(FILE* input, char* lexeme);
-bool isHexNumber(FILE* input, char* lexeme);
-int getKeywordToken(const char* lexeme);
-int getOperatorToken(const char* lexeme);
+bool isStringLiteral(FILE *input, char *lexeme, int *lineNumber);
+bool isCharLiteral(FILE *input, char *lexeme, int *lineNumber);
+int isNumber(FILE *input, char *lexeme);
+bool isIdentifier(FILE *input, char *lexeme);
+bool isHexNumber(FILE *input, char *lexeme);
+int getKeywordToken(const char *lexeme);
+int getOperatorToken(const char *lexeme);
 
-
-void lexer(FILE* input, char* filename, FILE* output) {
+void lexer(FILE *input, char *filename, FILE *output)
+{
     char lexeme[1024];
     int lineNumber = 1;
     int token;
-    while ((token = getNextToken(input, output, lexeme, &lineNumber)) != 0) {
-        if (token == -1) {
+    while ((token = getNextToken(input, output, lexeme, &lineNumber)) != 0)
+    {
+        if (token == -1)
+        {
             break;
         }
         printToken(output, filename, &lineNumber, token, lexeme);
     }
 }
 
-//How does the code handle multiple header files
-
-int getNextToken(FILE* input, FILE* output, char* lexeme, int* lineNumber) {
+int getNextToken(FILE *input, FILE *output, char *lexeme, int *lineNumber)
+{
     char c = fgetc(input);
-    while (isWhitespace(c)) {
-        if (c == '\n') {
+    while (isWhitespace(c))
+    {
+        if (c == '\n')
+        {
             (*lineNumber)++;
         }
         c = fgetc(input);
     }
-    if (c == EOF) {
+    if (c == EOF)
+    {
         return 0;
     }
-    if (c == '#') {
-        // Read the rest of the directive
+    if (c == '#')
+    {
         char directive[32];
         int i = 0;
-        while (!isspace(c = fgetc(input)) && c != EOF && i < 31) {
+        while (!isspace(c = fgetc(input)) && c != EOF && i < 31)
+        {
             directive[i++] = c;
         }
         directive[i] = '\0';
-        if (strcmp(directive, "include") == 0) {
-            // Skip whitespace and expect a filename in double quotes
-            while (isspace(c = fgetc(input)) && c != '\n' && c != EOF);
-            if (c == '"') {
+        if (strcmp(directive, "include") == 0)
+        {
+            while (isspace(c = fgetc(input)) && c != '\n' && c != EOF)
+                ;
+            if (c == '"')
+            {
                 char incFilename[256];
                 i = 0;
-                while ((c = fgetc(input)) != '"' && c != EOF && i < 255) {
+                while ((c = fgetc(input)) != '"' && c != EOF && i < 255)
+                {
                     incFilename[i++] = c;
                 }
                 incFilename[i] = '\0';
-                // Open the include file (you’ll need to implement a file stack mechanism)
                 FILE *incFile = fopen(incFilename, "r");
-                if (!incFile) {
+                if (!incFile)
+                {
                     fprintf(stderr, "Lexer error: Cannot open include file %s at line %d\n", incFilename, *lineNumber);
                     return -1;
                 }
-                // For simplicity, you can call lexer recursively on incFile or push it on a file stack.
-                lexer(incFile, incFilename, output); // or handle merging tokens appropriately
+                lexer(incFile, incFilename, output);
                 fclose(incFile);
-                // Continue lexing the original file after the include
                 return getNextToken(input, output, lexeme, lineNumber);
             }
         }
-        // If not an include, skip the rest of the line.
-        while ((c = fgetc(input)) != '\n' && c != EOF);
+        while ((c = fgetc(input)) != '\n' && c != EOF)
+            ;
         (*lineNumber)++;
         return getNextToken(input, output, lexeme, lineNumber);
     }
-    
-    if (c == '/') {
-        char nextChar = fgetc(input); // Read the next character
-        if (nextChar == '/') {
+
+    if (c == '/')
+    {
+        char nextChar = fgetc(input);
+        if (nextChar == '/')
+        {
             // Single-line comment
-            while ((c = fgetc(input)) != '\n' && c != EOF) {
-                // Skip until newline or EOF
+            while ((c = fgetc(input)) != '\n' && c != EOF);
+            if (c == '\n')
+            {
+                (*lineNumber)++;
             }
-            if (c == '\n') {
-                (*lineNumber)++; // Increment line number for newline
-            }
-            return getNextToken(input, output, lexeme, lineNumber);;
-        } else if (nextChar == '*') {
+            return getNextToken(input, output, lexeme, lineNumber);
+            ;
+        }
+        else if (nextChar == '*')
+        {
             // Multi-line comment
-            while (true) {
+            while (true)
+            {
                 c = fgetc(input);
-                if (c == '\n') {
-                    (*lineNumber)++; // Increment line number for newline
+                if (c == '\n')
+                {
+                    (*lineNumber)++;
                 }
-                if (c == EOF) {
+                if (c == EOF)
+                {
                     fprintf(stderr, "Lexer error: Unclosed multi-line comment at line %d\n", *lineNumber);
-                    return -1; // Error: Unclosed comment
+                    return -1;
                 }
-                if (c == '*') {
+                if (c == '*')
+                {
                     char next = fgetc(input);
-                    if (next == '/') {
+                    if (next == '/')
+                    {
                         return getNextToken(input, output, lexeme, lineNumber); // End of multi-line comment
-                    } else {
-                        ungetc(next, input); // Push back the character
+                    }
+                    else
+                    {
+                        ungetc(next, input); 
                     }
                 }
             }
-        } else {
-            // Not a comment, handle as division operator or single '/'
-            ungetc(nextChar, input); // Push back the character
+        }
+        else
+        {
+            ungetc(nextChar, input); 
             lexeme[0] = c;
             lexeme[1] = '\0';
-            return c; // Return '/' as a token
+            return c;
         }
     }
 
-    if (c == '"') {
-        if (isStringLiteral(input, lexeme, lineNumber)) {
+    if (c == '"')
+    {
+        if (isStringLiteral(input, lexeme, lineNumber))
+        {
             return TOKEN_STRING;
         }
     }
 
-    if (c == '\'') {
-        if (isCharLiteral(input, lexeme, lineNumber)) {
+    if (c == '\'')
+    {
+        if (isCharLiteral(input, lexeme, lineNumber))
+        {
             return TOKEN_CHAR;
         }
     }
 
-    if (isdigit(c) || c == '.') {
+    if (isdigit(c) || c == '.')
+    {
         ungetc(c, input);
-        return isNumber(input, lexeme);
+        if (isHexNumber(input, lexeme))
+        {
+            return TOKEN_HEX;
+        }
+        else
+        {
+            return isNumber(input, lexeme);
+        }
     }
 
-    if (isalpha(c) || c == '_') {
+    if (isalpha(c) || c == '_')
+    {
         ungetc(c, input);
-        if (isIdentifier(input, lexeme)) {
-            if (isKeyword(lexeme)) {
+        if (isIdentifier(input, lexeme))
+        {
+            if (isKeyword(lexeme))
+            {
                 return getKeywordToken(lexeme);
-            } else if (isType(lexeme)) {
+            }
+            else if (isType(lexeme))
+            {
                 return TOKEN_TYPE;
-            } else {
+            }
+            else
+            {
                 return TOKEN_IDENTIFIER;
             }
         }
     }
 
-    if (isSymbol(c)) {
+    if (isSymbol(c))
+    {
         lexeme[0] = c;
         lexeme[1] = '\0';
-        return c;
-    }
 
-    if (c == '=' || c == '!' || c == '>' || c == '<' ||
-        c == '+' || c == '-' || c == '|' || c == '&' ||
-        c == '*' || c == '/') {
-        
-        lexeme[0] = c;
-        lexeme[1] = '\0';
-        
         char next = fgetc(input);
-        // Check specific combinations
         if ((c == '=' && next == '=') ||
             (c == '!' && next == '=') ||
             (c == '>' && next == '=') ||
@@ -243,208 +269,204 @@ int getNextToken(FILE* input, FILE* output, char* lexeme, int* lineNumber) {
             (c == '|' && next == '|') ||
             (c == '&' && next == '&') ||
             (c == '*' && next == '=') ||
-            (c == '/' && next == '=')) {
+            (c == '/' && next == '='))
+        {
             lexeme[1] = next;
             lexeme[2] = '\0';
-        } else {
+        }
+        else
+        {
             ungetc(next, input);
         }
-        if (isOperator(lexeme)) {
+        if (isOperator(lexeme))
+        {
             int token = getOperatorToken(lexeme);
-            if (token != -1) {
+            if (token != -1)
+            {
                 return token;
             }
-        } 
-            return c; // fall back to single-character symbol
-        
+        }
+        return c;
     }
-
     fprintf(stderr, "Lexer error: Unknown character '%c'\n", c);
     return -1;
 }
 
-
-void printToken(FILE* output, char* filename, int* lineNumber, int token, const char* lexeme) {
-    fprintf(output,"File %s Line %d Token %d Text %s\n", filename, *lineNumber, token, lexeme);
+void printToken(FILE *output, char *filename, int *lineNumber, int token, const char *lexeme)
+{
+    fprintf(output, "File %s Line %d Token %d Text %s\n", filename, *lineNumber, token, lexeme);
 }
 
-bool isKeyword(const char* lexeme) {
+bool isKeyword(const char *lexeme)
+{
     const char *keywords[] = {
-        "const", "struct", "for", "while", "do", "if", "else", "break", "continue", "return", "switch", "case", "default"
-    };
-    for (size_t i = 0; i < sizeof(keywords) / sizeof(keywords[0]); i++) {
-        if (strcmp(lexeme, keywords[i]) == 0) {
+        "const", "struct", "for", "while", "do", "if", "else", "break", "continue", "return", "switch", "case", "default"};
+    for (size_t i = 0; i < sizeof(keywords) / sizeof(keywords[0]); i++)
+    {
+        if (strcmp(lexeme, keywords[i]) == 0)
+        {
             return true;
         }
     }
     return false;
 }
 
-bool isType(const char* lexeme) {
+bool isType(const char *lexeme)
+{
     const char *types[] = {
-        "void", "char", "int", "float"
-    };
-    for (size_t i = 0; i < sizeof(types) / sizeof(types[0]); i++) {
-        if (strcmp(lexeme, types[i]) == 0) {
+        "void", "char", "int", "float"};
+    for (size_t i = 0; i < sizeof(types) / sizeof(types[0]); i++)
+    {
+        if (strcmp(lexeme, types[i]) == 0)
+        {
             return true;
         }
     }
     return false;
 }
 
-bool isOperator(const char* lexeme) {
+bool isOperator(const char *lexeme)
+{
     const char *operators[] = {
-        "==", "!=", ">=", "<=", "++", "--", "||", "&&", "+=", "-=", "*=", "/="
-    };
-    for (size_t i = 0; i < sizeof(operators) / sizeof(operators[0]); i++) {
-        if (strcmp(lexeme, operators[i]) == 0) {
+        "==", "!=", ">=", "<=", "++", "--", "||", "&&", "+=", "-=", "*=", "/="};
+    for (size_t i = 0; i < sizeof(operators) / sizeof(operators[0]); i++)
+    {
+        if (strcmp(lexeme, operators[i]) == 0)
+        {
             return true;
         }
     }
     return false;
 }
 
-bool isSymbol(char c) {
+bool isSymbol(char c)
+{
     const char symbols[] = {
-        '!', '%', '&', '(', ')', '*', '+', ',', '-', '.', '/', ':', ';', '<', '=', '>', '?', '[', ']', '{', '}', '~'
-    };
-    for (size_t i = 0; i < sizeof(symbols) / sizeof(symbols[0]); i++) {
-        if (c == symbols[i]) {
+        '!', '%', '&', '(', ')', '*', '+', ',', '-', '.', '/', ':', ';', '<', '=', '>', '?', '[', ']', '{', '}', '~'};
+    for (size_t i = 0; i < sizeof(symbols) / sizeof(symbols[0]); i++)
+    {
+        if (c == symbols[i])
+        {
             return true;
         }
     }
     return false;
 }
 
-bool isWhitespace(char c) {
+bool isWhitespace(char c)
+{
     return c == ' ' || c == '\t' || c == '\n' || c == '\r';
 }
 
-bool isComment(FILE* input, int* lineNumber) {
-    char c = fgetc(input);
-    if (c == '/') {
-        // Single-line comment
-        while ((c = fgetc(input)) != '\n' && c != EOF) {
-            // Skip until newline or EOF
-        }
-        if (c == '\n') {
-            (*lineNumber)++;
-        }
-        return true;
-    } else if (c == '*') {
-        // Multi-line comment
-        while (true) {
-            c = fgetc(input);
-            if (c == '\n') {
-                (*lineNumber)++;
-            }
-            if (c == EOF) {
-                fprintf(stderr, "Lexer error: Unclosed comment at line %d\n", *lineNumber);
-                return false;
-            }
-            if (c == '*') {
-                char next = fgetc(input);
-                if (next == '/') {
-                    return true;
-                } else {
-                    ungetc(next, input);
-                }
-            }
-        }
-    }
-    
-    return false;
-}
-
-bool isStringLiteral(FILE* input, char* lexeme, int* lineNumber) {
+bool isStringLiteral(FILE *input, char *lexeme, int *lineNumber)
+{
     int i = 0;
     int c;
-    while ((c = fgetc(input)) != '"' && c != EOF) {
-        if (c == '\\') { // Handle escape sequences
+    while ((c = fgetc(input)) != '"' && c != EOF)
+    {
+        if (c == '\\')
+        { 
             c = fgetc(input);
-            switch (c) {
-                case 'n':
-                    lexeme[i++] = '\\';
-                    lexeme[i++] = 'n'; 
-                    break;
-                case 't': 
-                    lexeme[i++] = '\\'; 
-                    lexeme[i++] = 't'; 
-                    break;
-                case '"': lexeme[i++] = '"'; break;
-                // Add other cases (e.g., \', \\, etc.)
-                default: lexeme[i++] = c; break;
+            switch (c)
+            {
+            case 'n':
+                lexeme[i++] = '\\';
+                lexeme[i++] = 'n';
+                break;
+            case 't':
+                lexeme[i++] = '\\';
+                lexeme[i++] = 't';
+                break;
+            case '"':
+                lexeme[i++] = '"';
+                break;
+            // Add other cases (e.g., \', \\, etc.)
+            default:
+                lexeme[i++] = c;
+                break;
             }
-        } else {
+        }
+        else
+        {
             lexeme[i++] = c;
         }
-        if (i>=1023) {
+        if (i >= 1023)
+        {
             fprintf(stderr, "Lexer error: String literal too long at line %d\n", *lineNumber);
             return false;
         }
     }
 
-    if (c == EOF) {
+    if (c == EOF)
+    {
         fprintf(stderr, "Lexer error: Unterminated string literal at line %d\n", *lineNumber);
         return false;
     }
-    // Null-terminate the lexeme
     lexeme[i] = '\0';
     return true;
 }
 
-bool isCharLiteral(FILE* input, char* lexeme, int* lineNumber) {
+bool isCharLiteral(FILE *input, char *lexeme, int *lineNumber)
+{
     int i = 0;
     char c;
-    // We assume the opening '\' has been consumed.
-    while ((c = fgetc(input)) != '\'' && c != EOF) {
-        if (c == '\\') {  // handle escape sequences
+    while ((c = fgetc(input)) != '\'' && c != EOF)
+    {
+        if (c == '\\')
+        { 
             lexeme[i++] = c;
             c = fgetc(input);
-            if (c == EOF) break;
+            if (c == EOF)
+                break;
         }
         lexeme[i++] = c;
-        if(i >= 1023) { // check against size limit (1024)
+        if (i >= 1023)
+        { 
             fprintf(stderr, "Lexer error: Char literal exceeds size limit at line %d\n", *lineNumber);
             return false;
         }
     }
-    if (c != '\'') {
-        return false;  // error: unclosed string literal
+    if (c != '\'')
+    {
+        return false; // error: unclosed string literal
     }
     lexeme[i] = '\0';
     return true;
 }
 
-int isNumber(FILE* input, char* lexeme) {
+int isNumber(FILE *input, char *lexeme)
+{
     int i = 0;
     bool isReal = false;
     char c = fgetc(input);
-    // Read initial digits (if any)
-    while (isdigit(c)) {
+    while (isdigit(c))
+    {
         lexeme[i++] = c;
         c = fgetc(input);
     }
-    // Check for a decimal point
-    if (c == '.') {
+    if (c == '.')
+    {
         isReal = true;
         lexeme[i++] = c;
         c = fgetc(input);
-        while (isdigit(c)) {
+        while (isdigit(c))
+        {
             lexeme[i++] = c;
             c = fgetc(input);
         }
     }
-    // Check for an exponent part
-    if (c == 'e' || c == 'E') {
+    if (c == 'e' || c == 'E')
+    {
         isReal = true;
         lexeme[i++] = c;
         c = fgetc(input);
-        if (c == '+' || c == '-') { // optional sign after e/E
+        if (c == '+' || c == '-')
+        { 
             lexeme[i++] = c;
             c = fgetc(input);
         }
-        while (isdigit(c)) {
+        while (isdigit(c))
+        {
             lexeme[i++] = c;
             c = fgetc(input);
         }
@@ -454,14 +476,18 @@ int isNumber(FILE* input, char* lexeme) {
     return isReal ? TOKEN_REAL : TOKEN_INT;
 }
 
-
-bool isIdentifier(FILE* input, char* lexeme) {
+bool isIdentifier(FILE *input, char *lexeme)
+{
     int i = 0;
     int c;
-    while ((c = fgetc(input)) != EOF && (isalnum(c) || c == '_')) {
-        if (i < 1023) { // Prevent overflow
+    while ((c = fgetc(input)) != EOF && (isalnum(c) || c == '_'))
+    {
+        if (i < 1023)
+        { 
             lexeme[i++] = c;
-        } else {
+        }
+        else
+        {
             fprintf(stderr, "Identifier too long\n");
             return false;
         }
@@ -471,56 +497,64 @@ bool isIdentifier(FILE* input, char* lexeme) {
     return true;
 }
 
-bool isHexNumber(FILE* input, char* lexeme) {
+bool isHexNumber(FILE *input, char *lexeme)
+{
     int i = 0;
     char c = fgetc(input);
-    if (c == '0') {
+    if (c == '0')
+    {
         char next = fgetc(input);
-        if (next == 'x' || next == 'X') {
+        if (next == 'x' || next == 'X')
+        {
             int validHex = 0;
-            while (isxdigit(c = fgetc(input))) {
+            while (isxdigit(c = fgetc(input)))
+            {
                 lexeme[i++] = c;
                 validHex = 1;
             }
-            if (!validHex) {
+            if (!validHex)
+            {
                 ungetc(c, input);
                 return false; // Invalid hex literal (e.g., "0x")
             }
             lexeme[i] = '\0';
             return true;
-        } else {
+        }
+        else
+        {
             ungetc(next, input);
         }
     }
     ungetc(c, input);
     return false;
-    
 }
 
-int getKeywordToken(const char* lexeme) {
+int getKeywordToken(const char *lexeme)
+{
     const char *keywords[] = {
-        "const", "struct", "for", "while", "do", "if", "else", "break", "continue", "return", "switch", "case", "default"
-    };
+        "const", "struct", "for", "while", "do", "if", "else", "break", "continue", "return", "switch", "case", "default"};
     int tokens[] = {
-        TOKEN_CONST, TOKEN_STRUCT, TOKEN_FOR, TOKEN_WHILE, TOKEN_DO, TOKEN_IF, TOKEN_ELSE, TOKEN_BREAK, TOKEN_CONTINUE, TOKEN_RETURN, TOKEN_SWITCH, TOKEN_CASE, TOKEN_DEFAULT
-    };
-    for (size_t i = 0; i < sizeof(keywords) / sizeof(keywords[0]); i++) {
-        if (strcmp(lexeme, keywords[i]) == 0) {
+        TOKEN_CONST, TOKEN_STRUCT, TOKEN_FOR, TOKEN_WHILE, TOKEN_DO, TOKEN_IF, TOKEN_ELSE, TOKEN_BREAK, TOKEN_CONTINUE, TOKEN_RETURN, TOKEN_SWITCH, TOKEN_CASE, TOKEN_DEFAULT};
+    for (size_t i = 0; i < sizeof(keywords) / sizeof(keywords[0]); i++)
+    {
+        if (strcmp(lexeme, keywords[i]) == 0)
+        {
             return tokens[i];
         }
     }
     return -1;
 }
 
-int getOperatorToken(const char* lexeme) {
+int getOperatorToken(const char *lexeme)
+{
     const char *operators[] = {
-        "==", "!=", ">=", "<=", "++", "--", "||", "&&", "+=", "-=", "*=", "/="
-    };
+        "==", "!=", ">=", "<=", "++", "--", "||", "&&", "+=", "-=", "*=", "/="};
     int tokens[] = {
-        TOKEN_EQ, TOKEN_NE, TOKEN_GE, TOKEN_LE, TOKEN_INC, TOKEN_DEC, TOKEN_OR, TOKEN_AND, TOKEN_ADD_ASSIGN, TOKEN_SUB_ASSIGN, TOKEN_MUL_ASSIGN, TOKEN_DIV_ASSIGN
-    };
-    for (size_t i = 0; i < sizeof(operators) / sizeof(operators[0]); i++) {
-        if (strcmp(lexeme, operators[i]) == 0) {
+        TOKEN_EQ, TOKEN_NE, TOKEN_GE, TOKEN_LE, TOKEN_INC, TOKEN_DEC, TOKEN_OR, TOKEN_AND, TOKEN_ADD_ASSIGN, TOKEN_SUB_ASSIGN, TOKEN_MUL_ASSIGN, TOKEN_DIV_ASSIGN};
+    for (size_t i = 0; i < sizeof(operators) / sizeof(operators[0]); i++)
+    {
+        if (strcmp(lexeme, operators[i]) == 0)
+        {
             return tokens[i];
         }
     }

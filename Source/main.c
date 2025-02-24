@@ -7,7 +7,7 @@
 void show_usage() {
     fprintf(stderr, "Usage: mycc -mode infile\nValid modes:\n");
     fprintf(stderr, " -0: Version information only\n");
-    fprintf(stderr, " -1: Phase 1 (not yet implemented)\n");
+    fprintf(stderr, " -1: Phase 1 Lexer Parsing \n");
 }
 
 void show_version() {
@@ -43,17 +43,18 @@ int main(int argc, char *argv[]) {
         FILE *output = fopen(argv[3], "w");
         if (!output) {
             perror("Error opening output file");
+            fclose(input);
             return 1;
         }
-        printf("[%u]: Test\n", __LINE__);
         lexer(input, filename, output);
-        printf("[%u]: Test\n", __LINE__);
     
         fclose(input);
         fclose(output);
-    
-        return 0;
+        printf("Completed lexing. Check %s for details\n",argv[3]);
 
+    }
+    else {
+        show_usage();
     }
     return 0;
     
