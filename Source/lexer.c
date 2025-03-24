@@ -10,9 +10,7 @@ bool isKeyword(char *checking_string);
 bool isType(char *checking_string);
 bool isOperator(char *checking_string);
 bool isSymbol(char c);
-int isNumber(lexer *L, char *checking_string);
 bool isIdentifier(lexer *L, char *checking_string);
-bool isHexNumber(lexer *L, char *checking_string);
 int getKeywordToken(lexer *L, char *checking_string);
 int getOperatorToken(lexer *L, char *checking_string);
 int getSymbolToken(char c);
@@ -25,6 +23,7 @@ void init_lexer(lexer *L, char *infilename, char *outfilename)
     L->infile = fopen(infilename, "r");
     L->outfile = fopen(outfilename, "w");
     L->outfilename = outfilename;
+    L->current.attrb = NULL;
     L->lineno = 1;
     getNextToken(L);
 }
@@ -42,7 +41,6 @@ void getNextToken(lexer *L)
     while (true)
     {
         c = fgetc(L->infile);
-
         // Case 1: End of File
         if (c == EOF)
         {
@@ -76,14 +74,13 @@ void getNextToken(lexer *L)
         // Case 4.1: End of multiline comment
         if (c == '*')
         {
-            c = fgetc(L->infile);
-            if (c == '/')
+            int next = fgetc(L->infile);
+            if (next == '/')
             {
                 is_multi_comment = 0;
                 continue;
             }
-            ungetc(c, L->infile);
-            continue;
+            ungetc(next, L->infile);
         }
         // Case 4.2: Inside a comment
         if (is_single_comment || is_multi_comment)
@@ -121,7 +118,7 @@ void getNextToken(lexer *L)
             c = fgetc(L->infile);
             char checking_string[255];
             int i = 0;
-            while (!((c == ' ') || (c == '\t') || (c == '\r')) && c != EOF && i < 254)
+            while (!((c == ' ') || (c == '\t') || (c == '\r')) && c != EOF && i < 253)
             {
                 checking_string[i++] = c;
                 c = fgetc(L->infile);
@@ -277,21 +274,45 @@ void getNextToken(lexer *L)
         if (isdigit(c) || c == '.')
         {
             char checking_string[48];
-            ungetc(c, L->infile);
+            int i = 0;
+            checking_string[i++] = c;
             // Case 8.1 Hexadecimal
-            if (isHexNumber(L, checking_string))
+            if (c == '0')
             {
-                L->current.ID = TOKEN_HEX;
-                L->current.attrb = strdup(checking_string);
-                return;
+                c = fgetc(L->infile);
+                if (c == 'x' || c == 'X')
+                {
+                    checking_string[i++] = c;
+                    while (isxdigit(c = fgetc(L->infile)))
+                    {
+                        if (i < 47)
+                            checking_string[i++] = c;
+                    }
+                    if (c != EOF)
+                        ungetc(c, L->infile);
+                    L->current.ID = TOKEN_HEX;
+                    L->current.attrb = strdup(checking_string);
+                    L->current.lineno = L->lineno;
+                    return;
+                }
+                else
+                {
+                    ungetc(c, L->infile);
+                }
             }
             // Case 8.2: Number
-            else
+            while ((c = fgetc(L->infile)) != EOF && (isdigit(c) || c == '.'))
             {
-                L->current.ID = isNumber(L, checking_string);
-                L->current.attrb = strdup(checking_string);
-                return;
+                if (i < 47)
+                    checking_string[i++] = c;
             }
+            checking_string[i] = '\0';
+            if (c != EOF)
+                ungetc(c, L->infile);
+            L->current.ID = (strchr(checking_string, '.') ? TOKEN_REAL : TOKEN_INT);
+            L->current.attrb = strdup(checking_string);
+            L->current.lineno = L->lineno;
+            return;
         }
 
         // Case 9: Identifiers
@@ -423,62 +444,7 @@ bool isSymbol(char c)
     return false;
 }
 
-int isNumber(lexer *L, char *checking_string)
-{
-    int i = 0;
-    bool isReal = false;
-    int c = fgetc(L->infile);
-    while (isdigit(c))
-    {
-        checking_string[i++] = c;
-        if (i >= 48)
-        {
-            fprintf(stderr, "Lexer error in file %s line %d at text %s: Integer literal too long\n", L->filename, L->lineno, checking_string);
-            return -1;
-        }
-        c = fgetc(L->infile);
-    }
-    if (c == '.')
-    {
-        isReal = true;
-        checking_string[i++] = c;
-        c = fgetc(L->infile);
-        while (isdigit(c))
-        {
-            checking_string[i++] = c;
-            if (i >= 48)
-            {
-                fprintf(stderr, "Lexer error in file %s line %d at text %s: Real literal too long\n", L->filename, L->lineno, checking_string);
-                return -1;
-            }
-            c = fgetc(L->infile);
-        }
-    }
-    if (c == 'e' || c == 'E')
-    {
-        isReal = true;
-        checking_string[i++] = c;
-        c = fgetc(L->infile);
-        if (c == '+' || c == '-')
-        {
-            checking_string[i++] = c;
-            c = fgetc(L->infile);
-        }
-        while (isdigit(c))
-        {
-            checking_string[i++] = c;
-            if (i >= 48)
-            {
-                fprintf(stderr, "Lexer error in file %s line %d at text %s: Real literal too long\n", L->filename, L->lineno, checking_string);
-                return -1;
-            }
-            c = fgetc(L->infile);
-        }
-    }
-    checking_string[i] = '\0';
-    ungetc(c, L->infile);
-    return isReal ? TOKEN_REAL : TOKEN_INT;
-}
+
 
 bool isIdentifier(lexer *L, char *checking_string)
 {
@@ -501,49 +467,17 @@ bool isIdentifier(lexer *L, char *checking_string)
     return true;
 }
 
-bool isHexNumber(lexer *L, char *checking_string)
-{
-    int i = 0;
-    char c = fgetc(L->infile);
-    if (c == '0')
-    {
-        char next = fgetc(L->infile);
-        if (next == 'x' || next == 'X')
-        {
-            checking_string[i++] = '0';
-            checking_string[i++] = next;
-            int validHex = 0;
-            while (isxdigit(c = fgetc(L->infile)))
-            {
-                checking_string[i++] = c;
-                validHex = 1;
-            }
-            if (!validHex)
-            {
-                ungetc(c, L->infile);
-                return false; // Invalid hex literal (e.g., "0x")
-            }
-            checking_string[i] = '\0';
-            return true;
-        }
-        else
-        {
-            ungetc(next, L->infile);
-        }
-    }
-    ungetc(c, L->infile);
-    return false;
-}
+
 
 int getSymbolToken(char c)
 {
     const char symbols[] = {
-        '!', '%', '&', '(', ')', '*', '+', ',', '-', '.', '/', ':', ';', '<', '=', '>', '?', '[', ']', '{', '}', '~'};
+        '!', '%', '&', '(', ')', '*', '+', ',', '-', '.', '/', ':', ';', '<', '=', '>', '?', '[', ']', '{', '}', '|', '~'};
     int tokens[] = {
         TOKEN_EXCLAMATION, TOKEN_PERCENT, TOKEN_AMPERSAND, TOKEN_LPAREN, TOKEN_RPAREN, TOKEN_ASTERISK,
         TOKEN_PLUS, TOKEN_COMMA, TOKEN_MINUS, TOKEN_DOT, TOKEN_SLASH, TOKEN_COLON, TOKEN_SEMICOLON,
         TOKEN_LESS, TOKEN_EQUAL, TOKEN_GREATER, TOKEN_QUESTION, TOKEN_LBRACKET, TOKEN_RBRACKET,
-        TOKEN_LBRACE, TOKEN_RBRACE, TOKEN_TILDE};
+        TOKEN_LBRACE, TOKEN_RBRACE, TOKEN_PIPE, TOKEN_TILDE};
 
     for (size_t i = 0; i < sizeof(symbols) / sizeof(symbols[0]); i++)
     {
@@ -587,6 +521,6 @@ int getOperatorToken(lexer *L, char *checking_string)
             return tokens[i];
         }
     }
-    fprintf(stderr, "Lexer error in file %s line %d at text %s: Invalid keyword\n", L->filename, L->lineno, checking_string);
+    fprintf(stderr, "Lexer error in file %s line %d at text %s: Invalid operator\n", L->filename, L->lineno, checking_string);
     exit(1);
 }

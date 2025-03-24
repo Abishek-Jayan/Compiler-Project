@@ -54,28 +54,32 @@ int main(int argc, char *argv[]) {
         printf("Completed lexing. Check %s for details\n",argv[3]);
 
     }
-    /*else if(strcmp(argv[1],"-2") == 0) {
+    else if(strcmp(argv[1],"-2") == 0) {
         if (argc < 3) {
             fprintf(stderr, "Usage: %s <input file>\n", argv[0]);
             return 1;
         }
-        char *filename = argv[2];
+        char *infilename = argv[2];
 
-        FILE *input = fopen(filename,"r");
-        if (!input) {
-            perror("Error opening input file");
+        char *outfilename = malloc(strlen(infilename) + strlen(".parser") + 1);
+        if (!outfilename) {
+            perror("Failed to allocate memory for outfilename");
             return 1;
         }
-        FILE *output = fopen("extension.parser","w");
-        if (!output) {
-            perror("Error opening output file");
-            fclose(input);
-            return 1;
-        }
-        parser(input,filename, output);
+        snprintf(outfilename, strlen(infilename) + strlen(".parser") + 1, "%s.parser", infilename);
+        lexer L;
+        init_lexer(&L,infilename,outfilename);
+        FILE *output = fopen(outfilename, "w");
+
+        parser P;
+        init_parser(&P, &L, output, infilename, outfilename);
+        fclose(L.infile);
+        fclose(output);
+        printf("Completed parsing. Check %s for details\n", outfilename);
+        free(outfilename);
 
 
-    }*/
+    }
     else {
         show_usage();
     }

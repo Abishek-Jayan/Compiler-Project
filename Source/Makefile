@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -pedantic
 TARGET = mycc
 
-SRCS = main.c lexer.c
+SRCS = main.c lexer.c parser.c
 
 OBJS = $(SRCS:.c=.o)
 
