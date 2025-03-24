@@ -104,11 +104,19 @@ void getNextToken(lexer *L)
                 is_multi_comment = 1;
                 continue;
             }
-
+            
+            //Edge Case: Its a div assign operator
+            if (next == '=')
+            {
+                L->current.ID = TOKEN_DIV_ASSIGN;
+                L->current.attrb = strdup("/=");
+                return;
+            }
+    
             // Else Case: Its just a division operator
             ungetc(next, L->infile);
             L->current.ID = TOKEN_SLASH;
-            L->current.attrb = "/";
+            L->current.attrb = strdup("/");
             return;
         }
 

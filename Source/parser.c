@@ -84,7 +84,7 @@ void parse(parser *P)
         }
         else
         {
-            fprintf(stderr, "Parser error in file %s in line %d: Expected type name\n", P->filename, P->current_token.lineno);
+            fprintf(stderr, "Parser error in file %s in line %d at text %s: Expected function or global declaration\n", P->filename, P->current_token.lineno, P->current_token.attrb);
             remove(P->outfilename);
             exit(1);
         }
@@ -112,6 +112,10 @@ void parse_declaration(parser *P)
     else
     {
         parse_variable_list(P, ident, line, P->is_inside_function ? "local variable" : "global variable");
+        if (P->current_token.ID == TOKEN_EQUAL) {
+            advance(P);
+            parse_assignment_expression(P);
+        }
         while (P->current_token.ID == TOKEN_COMMA)
         {
             advance(P);
@@ -126,6 +130,11 @@ void parse_declaration(parser *P)
             line = P->current_token.lineno;
             advance(P);
             parse_variable_list(P, ident, line, P->is_inside_function ? "local variable" : "global variable");
+            if (P->current_token.ID == TOKEN_EQUAL)
+            {
+                advance(P);
+                parse_assignment_expression(P);
+            }
         }
         match(P, TOKEN_SEMICOLON);
     }
@@ -510,7 +519,7 @@ void parse_primary_expression(parser *P)
     }
     else
     {
-        fprintf(stderr, "Parser error in file %s line %d: Expected primary expression\n", P->filename, P->current_token.lineno);
+        fprintf(stderr, "Parser error in file %s line %d at text %s: Expected identifier (within expression)\n", P->filename, P->current_token.lineno, P-> current_token.attrb);
         remove(P->outfilename);
         exit(1);
     }
