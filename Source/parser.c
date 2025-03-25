@@ -14,6 +14,7 @@ void parse_if_statement(parser *P);
 void parse_for_statement(parser *P);
 void parse_while_statement(parser *P);
 void parse_do_while_statement(parser *P);
+void parse_type_specifier(parser *P);
 void parse_statement_block(parser *P);
 void parse_assignment_expression(parser *P);
 void parse_conditional_expression(parser *P);
@@ -34,16 +35,12 @@ void match(parser *P, unsigned expected_id);
 void advance(parser *P)
 {
 
-    printf("Advancing from token ID %d, text '%s'\n",
-           P->current_token.ID, P->current_token.attrb ? P->current_token.attrb : "");
     if (P->current_token.attrb)
     {
         free(P->current_token.attrb);
     }
     getNextToken(P->L);
     P->current_token = P->L->current;
-    printf("Advanced to token ID %d, text '%s'\n",
-           P->current_token.ID, P->current_token.attrb ? P->current_token.attrb : "");
 }
 
 // Helper function to check if current token matches expected token
@@ -78,7 +75,8 @@ void parse(parser *P)
 {
     while (P->current_token.ID != END)
     {
-        if (P->current_token.ID == TOKEN_TYPE)
+
+        if (P->current_token.ID == TOKEN_TYPE || P->current_token.ID == TOKEN_STRUCT || P->current_token.ID == TOKEN_CONST)
         {
             parse_declaration(P);
         }
@@ -94,49 +92,208 @@ void parse(parser *P)
 // Checks if current token is a function or a variable, calling the corresponding function for each
 void parse_declaration(parser *P)
 {
-    match(P, TOKEN_TYPE);
-    if (P->current_token.ID != TOKEN_IDENTIFIER)
+    if (P->current_token.ID == TOKEN_STRUCT)
     {
-        fprintf(stderr, "Parser error in file %s line %d: Expected identifier\n", P->filename, P->current_token.lineno);
-        remove(P->outfilename);
-        exit(1);
-    }
-    char *ident = strdup(P->current_token.attrb);
-    unsigned line = P->current_token.lineno;
-    advance(P);
-    if (P->current_token.ID == TOKEN_LPAREN)
-    {
-        fprintf(P->output, "File %s Line %d: function %s\n", P->filename, line, ident);
-        parse_function_definition(P);
+        advance(P);
+        if (P->current_token.ID != TOKEN_IDENTIFIER)
+        {
+            fprintf(stderr, "Parser error in file %s line %d: Expected struct name\n",
+                    P->filename, P->current_token.lineno);
+            remove(P->outfilename);
+            exit(1);
+        }
+        char *struct_name = strdup(P->current_token.attrb);
+        unsigned line = P->current_token.lineno;
+        advance(P);
+        if (P->current_token.ID == TOKEN_LBRACE)
+        {
+            // Struct definition
+            fprintf(P->output, "File %s Line %d: %s struct %s\n",
+                    P->filename, line, P->is_inside_function ? "local" : "global", struct_name);
+            match(P, TOKEN_LBRACE);
+            while (P->current_token.ID != TOKEN_RBRACE && P->current_token.ID != END)
+            {
+                parse_type_specifier(P);
+                while (true)
+                {
+                    if (P->current_token.ID != TOKEN_IDENTIFIER)
+                    {
+                        fprintf(stderr, "Parser error in file %s line %d: Expected identifier\n",
+                                P->filename, P->current_token.lineno);
+                        remove(P->outfilename);
+                        exit(1);
+                    }
+                    char *member_ident = strdup(P->current_token.attrb);
+                    unsigned member_line = P->current_token.lineno;
+                    advance(P);
+                    parse_variable_list(P, member_ident, member_line, "member");
+                    free(member_ident);
+                    if (P->current_token.ID == TOKEN_COMMA)
+                    {
+                        advance(P);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                match(P, TOKEN_SEMICOLON);
+            }
+            match(P, TOKEN_RBRACE);
+            match(P, TOKEN_SEMICOLON);
+        }
+        else if (P->current_token.ID == TOKEN_IDENTIFIER)
+        {
+            char *ident = strdup(P->current_token.attrb); // e.g., "strange" or "p"
+            unsigned ident_line = P->current_token.lineno;
+            advance(P);
+            if (P->current_token.ID == TOKEN_LPAREN)
+            {
+                // Function definition or prototype, e.g., "struct point strange(int z)"
+                fprintf(P->output, "File %s Line %d: function %s\n", P->filename, ident_line, ident);
+                parse_function_definition(P);
+            }
+            else
+            {
+                // Variable declaration, e.g., "struct point p;"
+                parse_variable_list(P, ident, ident_line, P->is_inside_function ? "local variable" : "global variable");
+                if (P->current_token.ID == TOKEN_EQUAL)
+                {
+                    advance(P);
+                    parse_assignment_expression(P);
+                }
+                while (P->current_token.ID == TOKEN_COMMA)
+                {
+                    advance(P);
+                    if (P->current_token.ID != TOKEN_IDENTIFIER)
+                    {
+                        fprintf(stderr, "Parser error in file %s line %u: Expected identifier after comma\n",
+                                P->filename, P->current_token.lineno);
+                        remove(P->outfilename);
+                        exit(1);
+                    }
+                    free(ident);
+                    ident = strdup(P->current_token.attrb);
+                    unsigned new_line = P->current_token.lineno;
+                    advance(P);
+                    parse_variable_list(P, ident, new_line, P->is_inside_function ? "local variable" : "global variable");
+                    if (P->current_token.ID == TOKEN_EQUAL)
+                    {
+                        advance(P);
+                        parse_assignment_expression(P);
+                    }
+                }
+                match(P, TOKEN_SEMICOLON);
+            }
+            free(ident);
+        }
+        else
+        {
+            fprintf(stderr, "Parser error in file %s line %d: Expected '{' or identifier after struct name\n",
+                    P->filename, P->current_token.lineno);
+            remove(P->outfilename);
+            exit(1);
+        }
+        free(struct_name);
     }
     else
     {
-        parse_variable_list(P, ident, line, P->is_inside_function ? "local variable" : "global variable");
-        if (P->current_token.ID == TOKEN_EQUAL) {
-            advance(P);
-            parse_assignment_expression(P);
-        }
-        while (P->current_token.ID == TOKEN_COMMA)
+        parse_type_specifier(P);
+        if (P->current_token.ID != TOKEN_IDENTIFIER)
         {
-            advance(P);
-            if (P->current_token.ID != TOKEN_IDENTIFIER)
-            {
-                fprintf(stderr, "Parser error in file %s line %u: Expected identifier after comma\n", P->filename, P->current_token.lineno);
+            fprintf(stderr, "Parser error in file %s line %d: Expected identifier\n", P->filename, P->current_token.lineno);
+            remove(P->outfilename);
+            exit(1);
+        }
+        char *ident = strdup(P->current_token.attrb);
+        unsigned line = P->current_token.lineno;
+        advance(P);
+        if (P->current_token.ID == TOKEN_LPAREN)
+        {
+            if(P->is_inside_function == true) {
+                fprintf(stderr, "Parser error in file %s line %u: Cannot nest functions", P->filename,P->current_token.lineno);
                 remove(P->outfilename);
                 exit(1);
             }
-            free(ident);
-            ident = strdup(P->current_token.attrb);
-            line = P->current_token.lineno;
-            advance(P);
+            fprintf(P->output, "File %s Line %d: function %s\n", P->filename, line, ident);
+            parse_function_definition(P);
+        }
+        else
+        {
             parse_variable_list(P, ident, line, P->is_inside_function ? "local variable" : "global variable");
             if (P->current_token.ID == TOKEN_EQUAL)
             {
                 advance(P);
                 parse_assignment_expression(P);
             }
+            while (P->current_token.ID == TOKEN_COMMA)
+            {
+                advance(P);
+                if (P->current_token.ID != TOKEN_IDENTIFIER)
+                {
+                    fprintf(stderr, "Parser error in file %s line %u: Expected identifier after comma\n", P->filename, P->current_token.lineno);
+                    remove(P->outfilename);
+                    exit(1);
+                }
+                free(ident);
+                ident = strdup(P->current_token.attrb);
+                line = P->current_token.lineno;
+                advance(P);
+                parse_variable_list(P, ident, line, P->is_inside_function ? "local variable" : "global variable");
+                if (P->current_token.ID == TOKEN_EQUAL)
+                {
+                    advance(P);
+                    parse_assignment_expression(P);
+                }
+            }
+            match(P, TOKEN_SEMICOLON);
         }
-        match(P, TOKEN_SEMICOLON);
+        free(ident);
+    }
+}
+
+// Handles const and struct
+void parse_type_specifier(parser *P)
+{
+    bool has_const = false;
+    if (P->current_token.ID == TOKEN_CONST)
+    {
+        has_const = true;
+        advance(P);
+    }
+    if (P->current_token.ID == TOKEN_TYPE)
+    {
+        advance(P);
+    }
+    else if (P->current_token.ID == TOKEN_STRUCT)
+    {
+        advance(P);
+        if (P->current_token.ID != TOKEN_IDENTIFIER)
+        {
+            fprintf(stderr, "Parser error in file %s line %d text %s: Expected struct name\n",
+                    P->filename, P->current_token.lineno, P->current_token.attrb);
+            remove(P->outfilename);
+            exit(1);
+        }
+        advance(P);
+    }
+    else
+    {
+        fprintf(stderr, "Parser error in file %s line %d text %s: Expected character missing\n",
+                P->filename, P->current_token.lineno, P->current_token.attrb);
+        remove(P->outfilename);
+        exit(1);
+    }
+    if (P->current_token.ID == TOKEN_CONST)
+    {
+        if (has_const)
+        {
+            fprintf(stderr, "Parser error in file %s line %d: Duplicate const\n",
+                    P->filename, P->current_token.lineno);
+            remove(P->outfilename);
+            exit(1);
+        }
+        advance(P);
     }
 }
 
@@ -178,34 +335,35 @@ void parse_function_definition(parser *P)
         }
     }
     match(P, TOKEN_RPAREN);
-    match(P, TOKEN_LBRACE);
-    P->is_inside_function = true;
-    while (P->current_token.ID != TOKEN_RBRACE && P->current_token.ID != END)
+    if (P->current_token.ID == TOKEN_SEMICOLON)
     {
-        if (P->current_token.ID == TOKEN_TYPE)
-        {
-            parse_declaration(P); // Local variables
-        }
-        else
-        {
-            parse_statement(P);
-        }
+        advance(P);
     }
-    match(P, TOKEN_RBRACE);
-    P->is_inside_function = false;
+    else
+    {
+        match(P, TOKEN_LBRACE);
+        P->is_inside_function = true;
+        while (P->current_token.ID != TOKEN_RBRACE && P->current_token.ID != END)
+        {
+
+            if (P->current_token.ID == TOKEN_TYPE || P->current_token.ID == TOKEN_STRUCT || P->current_token.ID == TOKEN_CONST)
+            {
+                parse_declaration(P); // Local variables
+            }
+            else
+            {
+                parse_statement(P);
+            }
+        }
+        match(P, TOKEN_RBRACE);
+        P->is_inside_function = false;
+    }
 }
 
 //
 void parse_formal_parameter(parser *P)
 {
-    if (P->current_token.ID != TOKEN_TYPE)
-    {
-        fprintf(stderr, "Parser error in file %s line %d: Expected type name for parameter\n", P->filename, P->current_token.lineno);
-        remove(P->outfilename);
-        exit(1);
-    }
-
-    advance(P);
+    parse_type_specifier(P);
 
     if (P->current_token.ID != TOKEN_IDENTIFIER)
     {
@@ -333,7 +491,7 @@ void parse_statement_block(parser *P)
     match(P, TOKEN_LBRACE);
     while (P->current_token.ID != TOKEN_RBRACE && P->current_token.ID != END)
     {
-        if (P->current_token.ID == TOKEN_TYPE)
+        if (P->current_token.ID == TOKEN_TYPE || P->current_token.ID == TOKEN_STRUCT || P->current_token.ID == TOKEN_CONST)
         {
             parse_declaration(P);
         }
@@ -481,25 +639,47 @@ void parse_primary_expression(parser *P)
     else if (P->current_token.ID == TOKEN_IDENTIFIER)
     {
         advance(P);
-        if (P->current_token.ID == TOKEN_LPAREN)
+        // First, handle all postfix operators including function calls
+        while (P->current_token.ID == TOKEN_DOT || P->current_token.ID == TOKEN_LBRACKET || P->current_token.ID == TOKEN_LPAREN)
         {
-            advance(P);
-            if (P->current_token.ID != TOKEN_RPAREN)
+            if (P->current_token.ID == TOKEN_DOT)
             {
-                do
+                advance(P);
+                if (P->current_token.ID != TOKEN_IDENTIFIER)
                 {
-                    parse_assignment_expression(P);
-                    if (P->current_token.ID == TOKEN_COMMA)
-                    {
-                        advance(P);
-                    }
-                    else
-                    {
-                        break;
-                    }
-                } while (true);
+                    fprintf(stderr, "Parser error in file %s line %d at text %s: Expected identifier after '.'\n",
+                            P->filename, P->current_token.lineno, P->current_token.attrb);
+                    remove(P->outfilename);
+                    exit(1);
+                }
+                advance(P);
             }
-            match(P, TOKEN_RPAREN);
+            else if (P->current_token.ID == TOKEN_LBRACKET)
+            {
+                advance(P);
+                parse_assignment_expression(P);
+                match(P, TOKEN_RBRACKET);
+            }
+            else if (P->current_token.ID == TOKEN_LPAREN)
+            {
+                advance(P);
+                if (P->current_token.ID != TOKEN_RPAREN)
+                {
+                    while (true)
+                    {
+                        parse_assignment_expression(P); // Parse each argument fully
+                        if (P->current_token.ID == TOKEN_COMMA)
+                        {
+                            advance(P);
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                }
+                match(P, TOKEN_RPAREN);
+            }
         }
     }
     else if (P->current_token.ID == TOKEN_LPAREN)
@@ -519,7 +699,8 @@ void parse_primary_expression(parser *P)
     }
     else
     {
-        fprintf(stderr, "Parser error in file %s line %d at text %s: Expected identifier (within expression)\n", P->filename, P->current_token.lineno, P-> current_token.attrb);
+        fprintf(stderr, "Parser error in file %s line %d at text %s: Expected identifier (within expression)\n",
+                P->filename, P->current_token.lineno, P->current_token.attrb);
         remove(P->outfilename);
         exit(1);
     }

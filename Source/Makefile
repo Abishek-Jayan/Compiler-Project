@@ -5,6 +5,7 @@ TARGET = mycc
 SRCS = main.c lexer.c parser.c
 
 OBJS = $(SRCS:.c=.o)
+OUTPUT = *.parser *.lexer
 
 all: $(TARGET)
 
@@ -15,4 +16,4 @@ $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(TARGET) $(OBJS)
+	rm -f $(TARGET) $(OBJS) $(OUTPUT)

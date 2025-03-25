@@ -104,15 +104,15 @@ void getNextToken(lexer *L)
                 is_multi_comment = 1;
                 continue;
             }
-            
-            //Edge Case: Its a div assign operator
+
+            // Edge Case: Its a div assign operator
             if (next == '=')
             {
                 L->current.ID = TOKEN_DIV_ASSIGN;
                 L->current.attrb = strdup("/=");
                 return;
             }
-    
+
             // Else Case: Its just a division operator
             ungetc(next, L->infile);
             L->current.ID = TOKEN_SLASH;
@@ -279,48 +279,145 @@ void getNextToken(lexer *L)
         }
 
         // Case 8: Integer Literal
-        if (isdigit(c) || c == '.')
+        if (isdigit(c))
         {
             char checking_string[48];
             int i = 0;
             checking_string[i++] = c;
-            // Case 8.1 Hexadecimal
+            bool has_dot = false;
+            bool has_exponent = false;
+
             if (c == '0')
             {
-                c = fgetc(L->infile);
-                if (c == 'x' || c == 'X')
+                int next = fgetc(L->infile);
+                if (next == 'x' || next == 'X')
                 {
-                    checking_string[i++] = c;
-                    while (isxdigit(c = fgetc(L->infile)))
+                    // Hexadecimal number
+                    checking_string[i++] = next;
+                    while ((c = fgetc(L->infile)) != EOF && isxdigit(c))
                     {
                         if (i < 47)
                             checking_string[i++] = c;
                     }
+                    if (i == 2)
+                    { // Just "0x" with no digits
+                        fprintf(stderr, "Lexer error in file %s line %d: Invalid hexadecimal number\n",
+                                L->filename, L->lineno);
+                        exit(1);
+                    }
                     if (c != EOF)
                         ungetc(c, L->infile);
+                    checking_string[i] = '\0';
                     L->current.ID = TOKEN_HEX;
-                    L->current.attrb = strdup(checking_string);
+                    // Convert hex to decimal for attrb
+                    long val = strtol(checking_string, NULL, 16);
+                    char decimal_str[48];
+                    snprintf(decimal_str, 48, "%ld", val);
+                    L->current.attrb = strdup(decimal_str);
                     L->current.lineno = L->lineno;
                     return;
                 }
                 else
                 {
-                    ungetc(c, L->infile);
+                    ungetc(next, L->infile);
                 }
             }
-            // Case 8.2: Number
-            while ((c = fgetc(L->infile)) != EOF && (isdigit(c) || c == '.'))
+
+            // Decimal or real number
+            while (isdigit(c = fgetc(L->infile)))
             {
                 if (i < 47)
                     checking_string[i++] = c;
             }
-            checking_string[i] = '\0';
+            if (c == '.')
+            {
+                has_dot = true;
+                if (i < 47)
+                    checking_string[i++] = c;
+                while (isdigit(c = fgetc(L->infile)))
+                {
+                    if (i < 47)
+                        checking_string[i++] = c;
+                }
+            }
+            if (c == 'e' || c == 'E')
+            {
+                has_exponent = true;
+                if (i < 47)
+                    checking_string[i++] = c;
+                c = fgetc(L->infile);
+                if (c == '+' || c == '-')
+                {
+                    if (i < 47)
+                        checking_string[i++] = c;
+                    c = fgetc(L->infile);
+                }
+                while (isdigit(c))
+                {
+                    if (i < 47)
+                        checking_string[i++] = c;
+                    c = fgetc(L->infile);
+                }
+            }
             if (c != EOF)
                 ungetc(c, L->infile);
-            L->current.ID = (strchr(checking_string, '.') ? TOKEN_REAL : TOKEN_INT);
+            checking_string[i] = '\0';
+
+            L->current.ID = (has_dot || has_exponent) ? TOKEN_REAL : TOKEN_INT;
             L->current.attrb = strdup(checking_string);
             L->current.lineno = L->lineno;
             return;
+        }
+        else if (c == '.')
+        {
+            int next = fgetc(L->infile);
+            if (isdigit(next))
+            {
+                // Real number starting with '.'
+                char checking_string[48];
+                int i = 0;
+                checking_string[i++] = c;
+                checking_string[i++] = next;
+                while (isdigit(c = fgetc(L->infile)))
+                {
+                    if (i < 47)
+                        checking_string[i++] = c;
+                }
+                if (c == 'e' || c == 'E')
+                {
+                    if (i < 47)
+                        checking_string[i++] = c;
+                    c = fgetc(L->infile);
+                    if (c == '+' || c == '-')
+                    {
+                        if (i < 47)
+                            checking_string[i++] = c;
+                        c = fgetc(L->infile);
+                    }
+                    while (isdigit(c))
+                    {
+                        if (i < 47)
+                            checking_string[i++] = c;
+                        c = fgetc(L->infile);
+                    }
+                }
+                if (c != EOF)
+                    ungetc(c, L->infile);
+                checking_string[i] = '\0';
+                L->current.ID = TOKEN_REAL;
+                L->current.attrb = strdup(checking_string);
+                L->current.lineno = L->lineno;
+                return;
+            }
+            else
+            {
+                // Struct member access dot
+                ungetc(next, L->infile);
+                L->current.ID = TOKEN_DOT;
+                L->current.attrb = strdup(".");
+                L->current.lineno = L->lineno;
+                return;
+            }
         }
 
         // Case 9: Identifiers
@@ -452,8 +549,6 @@ bool isSymbol(char c)
     return false;
 }
 
-
-
 bool isIdentifier(lexer *L, char *checking_string)
 {
     int i = 0;
@@ -474,8 +569,6 @@ bool isIdentifier(lexer *L, char *checking_string)
     ungetc(c, L->infile);
     return true;
 }
-
-
 
 int getSymbolToken(char c)
 {
