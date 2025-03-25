@@ -1,3 +1,5 @@
 Source/mycc
 Source/*.o
 Source/*.lexer
+Source/input.c
+Source/*.parser
