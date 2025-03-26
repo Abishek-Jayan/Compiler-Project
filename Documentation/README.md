@@ -13,7 +13,7 @@
 Lexer has been implemented. Run ```./mycc -1 input_filename output_filename``` to run the lexer.
 
 ## Phase 2
-Parser has been implemented. Run ```./mycc -2 input_filename``` to run the lexer.
+Parser has been implemented. Run ```./mycc -2 input_filename``` to run the parser.
 
 ## Source Files
 1. main.c: Contains the main logic for the compiler. Handles command-line
