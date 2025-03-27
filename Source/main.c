@@ -60,13 +60,21 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         char *infilename = argv[2];
-
-        char *outfilename = malloc(strlen(infilename) + strlen(".parser") + 1);
-        if (!outfilename) {
-            perror("Failed to allocate memory for outfilename");
+        FILE *input = fopen(argv[2], "r");
+        if (!input) {
+            printf("Error: No such input file");
+            exit(1);
+        }
+        fclose(input);
+        char *truncated_infilename = malloc(strlen(infilename) -1);
+        if (!truncated_infilename) {
+            fprintf(stderr,"Failed to allocate memory for output file name");
             return 1;
         }
-        snprintf(outfilename, strlen(infilename) + strlen(".parser") + 1, "%s.parser", infilename);
+        strncpy(truncated_infilename,infilename,strlen(infilename)-2);
+        char *outfilename = malloc(strlen(truncated_infilename) + strlen(".parser") + 1);
+        snprintf(outfilename, strlen(truncated_infilename) + strlen(".parser") + 1, "%s.parser", truncated_infilename);
+
         lexer L;
         init_lexer(&L,infilename,outfilename);
         FILE *output = fopen(outfilename, "w");

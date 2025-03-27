@@ -8,6 +8,7 @@
 3. Run ```make```
 4. Run ```./mycc``` with appropriate arguments
 5. (Optional) Run ```make clean``` to remove the mycc executable and any temporary files made.
+6. When adding input and output files, make sure to add them into the Source folder.
 
 ## Phase 1
 Lexer has been implemented. Run ```./mycc -1 input_filename output_filename``` to run the lexer.

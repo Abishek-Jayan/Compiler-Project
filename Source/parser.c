@@ -97,8 +97,8 @@ void parse_declaration(parser *P)
         advance(P);
         if (P->current_token.ID != TOKEN_IDENTIFIER)
         {
-            fprintf(stderr, "Parser error in file %s line %d: Expected struct name\n",
-                    P->filename, P->current_token.lineno);
+            fprintf(stderr, "Parser error in file %s line %d at text %s: Expected struct name\n",
+                    P->filename, P->current_token.lineno, P->current_token.attrb);
             remove(P->outfilename);
             exit(1);
         }
@@ -118,8 +118,8 @@ void parse_declaration(parser *P)
                 {
                     if (P->current_token.ID != TOKEN_IDENTIFIER)
                     {
-                        fprintf(stderr, "Parser error in file %s line %d: Expected identifier\n",
-                                P->filename, P->current_token.lineno);
+                        fprintf(stderr, "Parser error in file %s line %d at text %s: Expected identifier\n",
+                                P->filename, P->current_token.lineno, P->current_token.attrb);
                         remove(P->outfilename);
                         exit(1);
                     }
@@ -167,8 +167,8 @@ void parse_declaration(parser *P)
                     advance(P);
                     if (P->current_token.ID != TOKEN_IDENTIFIER)
                     {
-                        fprintf(stderr, "Parser error in file %s line %u: Expected identifier after comma\n",
-                                P->filename, P->current_token.lineno);
+                        fprintf(stderr, "Parser error in file %s line %d at text %s: Expected identifier after comma\n",
+                                P->filename, P->current_token.lineno, P->current_token.attrb);
                         remove(P->outfilename);
                         exit(1);
                     }
@@ -201,7 +201,7 @@ void parse_declaration(parser *P)
         parse_type_specifier(P);
         if (P->current_token.ID != TOKEN_IDENTIFIER)
         {
-            fprintf(stderr, "Parser error in file %s line %d: Expected identifier\n", P->filename, P->current_token.lineno);
+            fprintf(stderr, "Parser error in file %s line %d at text %s: Expected identifier\n", P->filename, P->current_token.lineno, P->current_token.attrb);
             remove(P->outfilename);
             exit(1);
         }
@@ -211,7 +211,7 @@ void parse_declaration(parser *P)
         if (P->current_token.ID == TOKEN_LPAREN)
         {
             if(P->is_inside_function == true) {
-                fprintf(stderr, "Parser error in file %s line %u: Cannot nest functions", P->filename,P->current_token.lineno);
+                fprintf(stderr, "Parser error in file %s line %d: Cannot nest functions", P->filename,P->current_token.lineno);
                 remove(P->outfilename);
                 exit(1);
             }
@@ -231,8 +231,8 @@ void parse_declaration(parser *P)
                 advance(P);
                 if (P->current_token.ID != TOKEN_IDENTIFIER)
                 {
-                    fprintf(stderr, "Parser error in file %s line %u: Expected identifier after comma\n", P->filename, P->current_token.lineno);
-                    remove(P->outfilename);
+                    fprintf(stderr, "Parser error in file %s line %d at text %s: Expected identifier after comma\n",
+                        P->filename, P->current_token.lineno, P->current_token.attrb);                    remove(P->outfilename);
                     exit(1);
                 }
                 free(ident);
@@ -305,7 +305,7 @@ void parse_variable_list(parser *P, char *ident, unsigned line, char *kind)
         advance(P);
         if (P->current_token.ID != TOKEN_INT)
         {
-            fprintf(stderr, "Parser error in file %s line %d: Expected integer literal for array size\n", P->filename, P->current_token.lineno);
+            fprintf(stderr, "Parser error in file %s line %d at text %s: Expected integer literal for array size\n", P->filename, P->current_token.lineno, P->current_token.attrb);
             remove(P->outfilename);
             exit(1);
         }
@@ -367,7 +367,7 @@ void parse_formal_parameter(parser *P)
 
     if (P->current_token.ID != TOKEN_IDENTIFIER)
     {
-        fprintf(stderr, "Parser error in file %s line %d: Expected identifier for parameter\n", P->filename, P->current_token.lineno);
+        fprintf(stderr, "Parser error in file %s line %d at text %s: Expected identifier for parameter\n", P->filename, P->current_token.lineno, P->current_token.attrb);
         remove(P->outfilename);
         exit(1);
     }
