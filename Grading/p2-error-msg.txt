@@ -1,0 +1,5 @@
+"Unexpected error
+                 Student error stream (first 10 lines):
+                 ------------------------------------------------------------
+                 | Usage: ./mycc <input file> <output file>
+                 ---------------------------------------------"
