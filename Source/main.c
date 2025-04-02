@@ -30,20 +30,32 @@ int main(int argc, char *argv[]) {
         show_version();
     }
     else if(strcmp(argv[1], "-1") == 0){
-        if (argc < 4) {
-            fprintf(stderr, "Usage: %s <input file> <output file>\n", argv[0]);
+        if (argc < 3) {
+            fprintf(stderr, "Usage: %s <input file>\n", argv[0]);
             return 1;
         }
         char *infilename = argv[2];
         FILE *input = fopen(argv[2], "r");
+        if (!input) {
+            printf("Error: No such input file");
+            exit(1);
+        }
+        char *truncated_infilename = malloc(strlen(infilename) -1);
+        if (!truncated_infilename) {
+            fprintf(stderr,"Failed to allocate memory for output file name");
+            return 1;
+        }
+        strncpy(truncated_infilename,infilename,strlen(infilename)-2);
+        char *outfilename = malloc(strlen(truncated_infilename) + strlen(".lexer") + 1);
+        snprintf(outfilename, strlen(truncated_infilename) + strlen(".lexer") + 1, "%s.lexer", truncated_infilename);
 
-        char *outfilename = argv[3];
+        
+        FILE *output = fopen(outfilename, "w");
 
         lexer L;
         init_lexer(&L,infilename,outfilename);
-        FILE *output = fopen(argv[3], "w");
 
-        while (L.current.ID)
+        while (L.current.ID != END)
                     {
                         fprintf(output, "File %s Line %d Token %d Text %s\n", L.filename, L.lineno, L.current.ID, L.current.attrb);
                         free(L.current.attrb);
@@ -51,7 +63,7 @@ int main(int argc, char *argv[]) {
                     }
         fclose(input);
         fclose(output);
-        printf("Completed lexing. Check %s for details\n",argv[3]);
+        printf("Completed lexing. Check %s for details\n",outfilename);
 
     }
     else if(strcmp(argv[1],"-2") == 0) {
