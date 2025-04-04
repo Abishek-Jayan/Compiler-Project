@@ -52,7 +52,7 @@ void match(parser *P, unsigned expected_id)
     }
     else
     {
-        fprintf(stderr, "Parser error in file %s at line number %d text %s: Expected token %d but got %d \n", P->filename, P->current_token.lineno, P->current_token.attrb ? P->current_token.attrb : "", expected_id, P->current_token.ID);
+        fprintf(stderr, "Parser error in file %s at line %d text %s: Expected token %d but got %d \n", P->filename, P->current_token.lineno, P->current_token.attrb ? P->current_token.attrb : "", expected_id, P->current_token.ID);
         remove(P->outfilename);
         exit(1);
     }
@@ -699,7 +699,7 @@ void parse_primary_expression(parser *P)
     }
     else
     {
-        fprintf(stderr, "Parser error in file %s line %d at text %s: Expected identifier (within expression)\n",
+        fprintf(stderr, "Parser error in file %s line %d at text %s: Expected term (in an expression)\n",
                 P->filename, P->current_token.lineno, P->current_token.attrb);
         remove(P->outfilename);
         exit(1);
