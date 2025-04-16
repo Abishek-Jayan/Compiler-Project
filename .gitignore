@@ -3,3 +3,4 @@ Source/*.o
 Source/*.lexer
 Source/input.c
 Source/*.parser
+Source/*.types

@@ -1,0 +1,161 @@
+#ifndef PARSER_AST_H
+#define PARSER_AST_H
+
+#include "lexer.h"
+#include <stdbool.h>
+
+/* ---------- Type System ---------- */
+typedef enum {
+    BASE_VOID,
+    BASE_CHAR,
+    BASE_INT,
+    BASE_FLOAT,
+    BASE_STRUCT  /* For user–defined structs */
+} BaseType;
+
+typedef struct Type {
+    BaseType base;
+    bool isConst;            // true if declared const
+    bool isArray;            // true if the variable is an array
+    char structName[64];     // valid only if base==BASE_STRUCT
+} Type;
+
+/* Format a type as a string (e.g. "const struct pair[]" or "int") */
+void format_type(const Type *t, char *outStr, size_t outSize);
+
+/* ---------- Abstract Syntax Tree ---------- */
+/* Expression kinds */
+typedef enum {
+    EXPR_LITERAL,
+    EXPR_IDENTIFIER,
+    EXPR_BINARY,
+    EXPR_UNARY,
+    EXPR_ASSIGN,      // assignment operator
+    EXPR_CAST,
+    EXPR_CALL,        // function call
+    EXPR_INDEX,       // array indexing
+    EXPR_MEMBER,      // struct member selection
+    EXPR_TERNARY
+} ExprKind;
+
+typedef enum {
+    OP_PLUS, OP_MINUS, OP_MUL, OP_DIV, OP_MOD,
+    OP_EQ, OP_NE, OP_LT, OP_LE, OP_GT, OP_GE,
+    OP_AND, OP_OR,
+    OP_NOT, OP_NEG, OP_INC, OP_DEC,
+    OP_ASSIGN,         // '=' operator
+    OP_CAST           // explicit cast (e.g. (int)x)
+} Operator;
+
+/* Expression node. For simplicity each node stores its computed type here. */
+typedef struct Expression {
+    ExprKind kind;
+    int lineno;          // location (typically where expression statement ends)
+    Type exprType;       // computed type
+
+    /* Operator kind, if applicable (for binary/unary, cast, assignment, call, member) */
+    Operator op;
+
+    /* For literals and identifiers, store the textual value */
+    char value[128];
+
+    /* For function calls: number of arguments, array of pointers */
+    int numArgs;
+    struct Expression **args;
+
+    /* For binary/unary/assignment/member/index expressions */
+    struct Expression *left;
+    struct Expression *right;
+    
+    /* For member selection, store the member name */
+    char memberName[64];
+} Expression;
+
+/* Statement kinds */
+typedef enum {
+    STMT_DECL,        // declaration statement (including optional initialization)
+    STMT_EXPR,        // expression statement
+    STMT_RETURN,      // return statement
+    STMT_COMPOUND     // compound statement (a block)
+} StmtKind;
+
+/* Declaration kinds are embedded in STMT_DECL. */
+typedef struct Declaration {
+    Type declType;       // declared type including array or const info
+    char name[64];       // variable name
+    bool initialized;    // true if an initializer is provided
+    Expression *init;    // initializer expression (may be NULL)
+} Declaration;
+
+/* Statement node */
+typedef struct Statement {
+    StmtKind kind;
+    int lineno;        // line number at end of statement
+    union {
+        Declaration decl;
+        Expression *expr;
+    } u;
+    /* For compound statements (block), store an array of statements */
+    int numStmts;
+    struct Statement **stmts;
+} Statement;
+
+/* Function prototype / definition */
+typedef struct Function {
+    char name[64];
+    Type returnType;
+    int numParams;
+    Declaration **params; // array of parameter declarations
+    Statement *body;      // function body (NULL if just a prototype)
+    bool defined;         // true if function defined, false if only prototype
+    struct Function *next;
+} Function;
+
+/* Struct definition for user-defined structs */
+typedef struct StructDef {
+    char name[64];
+    int numMembers;
+    Declaration **members;  // array of member declarations
+    bool isGlobal;          // global or local (error if duplicate names within same scope)
+    struct StructDef *next;
+} StructDef;
+
+
+#define MAX_LOOKAHEAD 3 // Enough for type, identifier, and one more token (e.g., '(', '{', ';')
+
+typedef struct LookaheadBuffer {
+    token tokens[MAX_LOOKAHEAD];
+    int count; // Number of tokens in buffer
+} LookaheadBuffer;
+
+
+
+
+
+/* ---------- Parser Function Prototypes ---------- */
+Statement *parser_statement(lexer *L, LookaheadBuffer *buf);
+Statement *parse_compound(lexer *L);
+Expression *parse_expression(lexer *L);
+Expression *parse_assignment(lexer *L);
+Expression *parse_ternary(lexer *L);
+Expression *parse_logicalOr(lexer *L);
+Expression *parse_logicalAnd(lexer *L);
+Expression *parse_equality(lexer *L);
+Expression *parse_relational(lexer *L);
+Expression *parse_additive(lexer *L);
+Expression *parse_multiplicative(lexer *L);
+Expression *parse_unary(lexer *L);
+Expression *parse_primary(lexer *L);
+
+/* Declaration parsing */
+Statement *parser_declaration(lexer *L, LookaheadBuffer *buf);
+
+/* Parsing function prototypes and struct declarations */
+Statement *parse_function_or_declaration(lexer *L, LookaheadBuffer *buf);
+Statement *parse_struct(lexer *L, LookaheadBuffer *buf);
+Statement **parse_program(lexer *L, int *stmtCount);
+/* Utility initialization routines */
+void init_symbol_tables(void);
+void type_check_statement(Statement *stmt, const char *filename);
+
+#endif

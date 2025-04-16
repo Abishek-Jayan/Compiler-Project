@@ -3,92 +3,104 @@
 #include <string.h>
 #include "lexer.h"
 #include "parser.h"
+#include "parser_ast.h"
 
-void show_usage() {
+void show_usage()
+{
     fprintf(stderr, "Usage: mycc -mode infile\nValid modes:\n");
     fprintf(stderr, " -0: Version information only\n");
     fprintf(stderr, " -1: Phase 1 Lexer Parsing \n");
     fprintf(stderr, " -2: Phase 2 Parser Parsing \n");
 }
 
-void show_version() {
+void show_version()
+{
     printf("My own C compiler for COMS 5400, Spring\n");
     printf("Written by Abishek Jayan (abishekj@iastate.edu)\n");
     printf("Version 1.0, released 29 January 2025\n");
 }
 
-
-int main(int argc, char *argv[]) {
-    if (argc == 1) {
+int main(int argc, char *argv[])
+{
+    if (argc == 1)
+    {
         show_usage();
     }
 
-    else if(strcmp(argv[1], "-0") == 0) {
-        if (argc < 3) {
+    else if (strcmp(argv[1], "-0") == 0)
+    {
+        if (argc < 3)
+        {
             fprintf(stderr, "Warning: No input file provided for -0 mode. \n");
         }
         show_version();
     }
-    else if(strcmp(argv[1], "-1") == 0){
-        if (argc < 3) {
+    else if (strcmp(argv[1], "-1") == 0)
+    {
+        if (argc < 3)
+        {
             fprintf(stderr, "Usage: %s <input file>\n", argv[0]);
             return 1;
         }
         char *infilename = argv[2];
         FILE *input = fopen(argv[2], "r");
-        if (!input) {
+        if (!input)
+        {
             printf("Error: No such input file");
             exit(1);
         }
-        char *truncated_infilename = malloc(strlen(infilename) -1);
-        if (!truncated_infilename) {
-            fprintf(stderr,"Failed to allocate memory for output file name");
+        char *truncated_infilename = malloc(strlen(infilename) - 1);
+        if (!truncated_infilename)
+        {
+            fprintf(stderr, "Failed to allocate memory for output file name");
             return 1;
         }
-        strncpy(truncated_infilename,infilename,strlen(infilename)-2);
+        strncpy(truncated_infilename, infilename, strlen(infilename) - 2);
         char *outfilename = malloc(strlen(truncated_infilename) + strlen(".lexer") + 1);
         snprintf(outfilename, strlen(truncated_infilename) + strlen(".lexer") + 1, "%s.lexer", truncated_infilename);
 
-        
         FILE *output = fopen(outfilename, "w");
 
         lexer L;
-        init_lexer(&L,infilename,outfilename);
+        init_lexer(&L, infilename, outfilename);
 
         while (L.current.ID != END)
-                    {
-                        fprintf(output, "File %s Line %d Token %d Text %s\n", L.filename, L.lineno, L.current.ID, L.current.attrb);
-                        free(L.current.attrb);
-                        getNextToken(&L);
-                    }
+        {
+            fprintf(output, "File %s Line %d Token %d Text %s\n", L.filename, L.lineno, L.current.ID, L.current.attrb);
+            free(L.current.attrb);
+            getNextToken(&L);
+        }
         fclose(input);
         fclose(output);
-        printf("Completed lexing. Check %s for details\n",outfilename);
-
+        printf("Completed lexing. Check %s for details\n", outfilename);
     }
-    else if(strcmp(argv[1],"-2") == 0) {
-        if (argc < 3) {
+    else if (strcmp(argv[1], "-2") == 0)
+    {
+        if (argc < 3)
+        {
             fprintf(stderr, "Usage: %s <input file>\n", argv[0]);
             return 1;
         }
         char *infilename = argv[2];
         FILE *input = fopen(argv[2], "r");
-        if (!input) {
+        if (!input)
+        {
             printf("Error: No such input file");
             exit(1);
         }
         fclose(input);
-        char *truncated_infilename = malloc(strlen(infilename) -1);
-        if (!truncated_infilename) {
-            fprintf(stderr,"Failed to allocate memory for output file name");
+        char *truncated_infilename = malloc(strlen(infilename) - 1);
+        if (!truncated_infilename)
+        {
+            fprintf(stderr, "Failed to allocate memory for output file name");
             return 1;
         }
-        strncpy(truncated_infilename,infilename,strlen(infilename)-2);
+        strncpy(truncated_infilename, infilename, strlen(infilename) - 2);
         char *outfilename = malloc(strlen(truncated_infilename) + strlen(".parser") + 1);
         snprintf(outfilename, strlen(truncated_infilename) + strlen(".parser") + 1, "%s.parser", truncated_infilename);
 
         lexer L;
-        init_lexer(&L,infilename,outfilename);
+        init_lexer(&L, infilename, outfilename);
         FILE *output = fopen(outfilename, "w");
 
         parser P;
@@ -97,12 +109,60 @@ int main(int argc, char *argv[]) {
         fclose(output);
         printf("Completed parsing. Check %s for details\n", outfilename);
         free(outfilename);
-
-
     }
-    else {
+    else if (strcmp(argv[1], "-3") == 0)
+    {
+        if (argc < 3)
+        {
+            fprintf(stderr, "Usage: %s <input file>\n", argv[0]);
+            return 1;
+        }
+        char *infilename = argv[2];
+        FILE *input = fopen(argv[2], "r");
+        if (!input)
+        {
+            printf("Error: No such input file");
+            exit(1);
+        }
+        fclose(input);
+        char *truncated_infilename = malloc(strlen(infilename) - 1);
+        if (!truncated_infilename)
+        {
+            fprintf(stderr, "Failed to allocate memory for output file name");
+            return 1;
+        }
+        strncpy(truncated_infilename, infilename, strlen(infilename) - 2);
+        char *outfilename = malloc(strlen(truncated_infilename) + strlen(".types") + 1);
+        snprintf(outfilename, strlen(truncated_infilename) + strlen(".types") + 1, "%s.types", truncated_infilename);
+
+        lexer L;
+        init_lexer(&L, infilename, outfilename);
+        FILE *output = fopen(outfilename, "w");
+
+    
+        
+        /* Initialize symbol tables */
+        init_symbol_tables();
+        
+        /* Parse the program */
+        int stmtCount = 0;
+        Statement **program = parse_program(&L, &stmtCount);
+        
+        for (int i = 0; i < stmtCount; i++) {
+
+            type_check_statement(program[i], infilename);
+        }
+
+    
+
+        return 0;
+        fclose(output);
+        printf("Completed type checking. Check %s for details\n", outfilename);
+        free(outfilename);
+    }
+    else
+    {
         show_usage();
     }
     return 0;
-    
 }

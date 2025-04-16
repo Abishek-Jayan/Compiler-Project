@@ -26,6 +26,7 @@
 #define TOKEN_MINUS 45
 #define TOKEN_DOT 46
 #define TOKEN_SLASH 47
+#define TOKEN_MOD '%'
 #define TOKEN_COLON 58
 #define TOKEN_SEMICOLON 59
 #define TOKEN_LESS 60
