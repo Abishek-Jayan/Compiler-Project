@@ -217,20 +217,24 @@ Expression *make_identifier(const char *name, int lineno)
     node->kind = EXPR_IDENTIFIER;
     node->lineno = lineno;
     strncpy(node->value, name, sizeof(node->value) - 1);
-    
+
     // Check if it's a variable
     VarSymbol *vs = lookup_variable(name);
-    if (vs) {
+    if (vs)
+    {
         node->exprType = vs->type;
-    } else {
+    }
+    else
+    {
         // Check if it's a function
         Function *func = lookup_function(name);
-        if (!func) {
+        if (!func)
+        {
             type_error("input.c", lineno, "Using undeclared variable or function");
         }
         node->exprType = func->returnType;
     }
-    
+
     node->left = node->right = NULL;
     node->numArgs = 0;
     return node;
@@ -663,7 +667,7 @@ Expression *parse_unary(lexer *L)
 
 // Parse primary expressions: literals, identifiers, parenthesized expr, array indexing, function calls, and member selection.
 Expression *parse_primary(lexer *L)
-{   
+{
 
     Expression *node = NULL;
     if (L->current.ID == TOKEN_LPAREN)
@@ -692,11 +696,10 @@ Expression *parse_primary(lexer *L)
         getNextToken(L);
 
         /* Handle array indexing: identifier followed by '[' expression ']' */
-        if (L->current.ID == TOKEN_LBRACKET)
+        while (L->current.ID == TOKEN_LBRACKET)
         {
             getNextToken(L); // consume '['
             Expression *indexExpr = parse_assignment(L);
-            node->exprType.isArray = true;
             if (L->current.ID != TOKEN_RBRACKET)
                 syntax_error(L, "']'");
             getNextToken(L); // consume ']'
@@ -730,7 +733,7 @@ Expression *parse_primary(lexer *L)
             getNextToken(L); // consume ')'
             node = make_call(node, args, numArgs, L->lineno);
         }
-        /* Handle member selection: identifier '.' identifier */
+        // Handle member selection: identifier '.' identifier
         while (L->current.ID == TOKEN_DOT)
         {
             getNextToken(L); // consume '.'
@@ -741,6 +744,12 @@ Expression *parse_primary(lexer *L)
             getNextToken(L);
             node = make_member(node, member, L->lineno);
         }
+        if (L->current.ID == TOKEN_INC || L->current.ID == TOKEN_DEC)
+        {
+            Operator op = (L->current.ID == TOKEN_INC) ? OP_INC : OP_DEC;
+            getNextToken(L);
+            node = make_unary(op, node, L->lineno);
+        }
     }
     else
     {
@@ -748,8 +757,6 @@ Expression *parse_primary(lexer *L)
     }
     return node;
 }
-
-
 
 Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isfunc)
 {
@@ -858,7 +865,7 @@ Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isfunc)
     // Expect semicolon
     if (!isfunc && L->current.ID != TOKEN_SEMICOLON)
         syntax_error(L, "';'");
-    //It could be a ','
+    // It could be a ','
     if (L->current.ID == TOKEN_SEMICOLON)
         getNextToken(L); // consume ';'
     return stmt;
@@ -920,8 +927,8 @@ Statement *parse_compound(lexer *L)
 {
     if (L->current.ID != TOKEN_LBRACE)
         syntax_error(L, "'{'");
-    getNextToken(L);                                          
-    Statement **stmts = my_malloc(100 * sizeof(Statement *)); 
+    getNextToken(L);
+    Statement **stmts = my_malloc(100 * sizeof(Statement *));
     int count = 0;
     LookaheadBuffer buf;
     init_lookahead(&buf);
@@ -929,16 +936,18 @@ Statement *parse_compound(lexer *L)
     while (L->current.ID != TOKEN_RBRACE && L->current.ID != END)
     {
         clear_lookahead(&buf);
-        if (L->current.ID == TOKEN_TYPE){
-            push_token(&buf,L->current);
+        if (L->current.ID == TOKEN_TYPE)
+        {
+            push_token(&buf, L->current);
             getNextToken(L);
-            if (L->current.ID == TOKEN_IDENTIFIER){
-                push_token(&buf,L->current);
+            if (L->current.ID == TOKEN_IDENTIFIER)
+            {
+                push_token(&buf, L->current);
                 getNextToken(L);
             }
         }
-        
-        stmts[count++] = parser_statement(L, &buf,false);
+
+        stmts[count++] = parser_statement(L, &buf, false);
     }
     if (L->current.ID != TOKEN_RBRACE)
         syntax_error(L, "'}'");
@@ -955,7 +964,7 @@ Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf)
 {
     int buf_pos = 0;
     // Parse type specifier and possible "const"
-    
+
     bool isConst = false;
     token t = (buf_pos < buf->count) ? buf->tokens[buf_pos++] : L->current;
     if (t.ID == TOKEN_IDENTIFIER && strcmp(t.attrb, "const") == 0)
@@ -1024,9 +1033,9 @@ Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf)
         clear_lookahead(&buff);
         push_token(&buff, L->current); // Store first token (e.g., "int", "struct")
 
-        //Create new buffer
-        //At each step assign the value to the buffer
-        //Then call the statement function (but it should ignore the lack of semicolons)
+        // Create new buffer
+        // At each step assign the value to the buffer
+        // Then call the statement function (but it should ignore the lack of semicolons)
         bool pConst = false;
         if (L->current.ID == TOKEN_IDENTIFIER && strcmp(L->current.attrb, "const") == 0)
         {
@@ -1034,7 +1043,7 @@ Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf)
             getNextToken(L);
         }
         Type pType = {0};
-        if (buff.count > 0 &&  buff.tokens[0].ID != TOKEN_TYPE)
+        if (buff.count > 0 && buff.tokens[0].ID != TOKEN_TYPE)
             syntax_error(L, "parameter type");
         if (strcmp(buff.tokens[0].attrb, "int") == 0)
             pType.base = BASE_INT;
@@ -1057,7 +1066,7 @@ Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf)
         pType.isConst = pConst;
         pType.isArray = false;
         getNextToken(L); // consume type name
-        push_token(&buff, L->current); 
+        push_token(&buff, L->current);
 
         if (L->current.ID != TOKEN_IDENTIFIER)
             syntax_error(L, "parameter name");
@@ -1065,7 +1074,7 @@ Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf)
         // Check for array parameter
         getNextToken(L);
         parser_statement(L, &buff, true);
-       
+
         param->declType = pType;
         param->initialized = false;
         param->init = NULL;
@@ -1078,12 +1087,11 @@ Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf)
         }
         else
             break;
-
     }
 
     if (L->current.ID != TOKEN_RPAREN)
         syntax_error(L, "')'");
-    getNextToken(L); 
+    getNextToken(L);
 
     // Create or update function symbol
     Function *func = my_malloc(sizeof(Function));
@@ -1156,7 +1164,7 @@ Statement *parse_struct(lexer *L, LookaheadBuffer *buf)
     // Parse member declarations until '}'
     while (L->current.ID != TOKEN_RBRACE)
     {
-        Statement *memberStmt = parser_statement(L, buf,false); // Note: parser_statement uses lexer directly
+        Statement *memberStmt = parser_statement(L, buf, false); // Note: parser_statement uses lexer directly
         sdef->members[sdef->numMembers] = my_malloc(sizeof(Declaration));
         *(sdef->members[sdef->numMembers]) = memberStmt->u.decl;
         sdef->numMembers++;
@@ -1193,8 +1201,8 @@ Statement **parse_program(lexer *L, int *stmtCount)
     {
         clear_lookahead(&buf);
         push_token(&buf, L->current); // Store first token (e.g., "int", "struct")
-        if (buf.count > 0 && ( buf.tokens[0].ID == TOKEN_TYPE ||
-            (buf.tokens[0].ID == TOKEN_IDENTIFIER && strcmp(buf.tokens[0].attrb, "struct") == 0)))
+        if (buf.count > 0 && (buf.tokens[0].ID == TOKEN_TYPE ||
+                              (buf.tokens[0].ID == TOKEN_IDENTIFIER && strcmp(buf.tokens[0].attrb, "struct") == 0)))
         {
             getNextToken(L);
 
@@ -1251,7 +1259,7 @@ void type_check_expression(Expression *expr, const char *filename, FILE *output)
 
     char typeStr[128];
     format_type(&expr->exprType, typeStr, sizeof(typeStr));
-    fprintf(output,"File %s Line %d: expression has type %s\n", filename, expr->lineno, typeStr);
+    fprintf(output, "File %s Line %d: expression has type %s\n", filename, expr->lineno, typeStr);
 }
 
 void type_check_statement(Statement *stmt, const char *filename, FILE *output)
