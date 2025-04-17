@@ -141,21 +141,17 @@ int main(int argc, char *argv[])
 
     
         
-        /* Initialize symbol tables */
+        // Initialize symbol tables
         init_symbol_tables();
         
-        /* Parse the program */
+        // Parse the program 
         int stmtCount = 0;
         Statement **program = parse_program(&L, &stmtCount);
         
         for (int i = 0; i < stmtCount; i++) {
 
-            type_check_statement(program[i], infilename);
+            type_check_statement(program[i], infilename,output);
         }
-
-    
-
-        return 0;
         fclose(output);
         printf("Completed type checking. Check %s for details\n", outfilename);
         free(outfilename);
