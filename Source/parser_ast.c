@@ -1084,7 +1084,7 @@ Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf)
 
     bool isConst = false;
     token t = (buf_pos < buf->count) ? buf->tokens[buf_pos++] : L->current;
-    if (t.ID == TOKEN_IDENTIFIER && strcmp(t.attrb, "const") == 0)
+    if (t.ID == TOKEN_CONST)
     {
         isConst = true;
         if (buf_pos <= buf->count)
@@ -1093,6 +1093,7 @@ Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf)
     }
 
     Type retType = {0};
+    int retTypeLine = L->lineno; // Store line number for error reporting
     if (t.ID == TOKEN_TYPE)
     {
         if (strcmp(t.attrb, "int") == 0)
@@ -1131,6 +1132,7 @@ Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf)
         syntax_error(L, "function name");
     char funcName[64];
     strncpy(funcName, t.attrb, sizeof(funcName) - 1);
+    int funcNameLine = L->lineno; // Line number for error reporting
     if (buf_pos <= buf->count)
         getNextToken(L);
 
@@ -1205,6 +1207,53 @@ Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf)
     if (L->current.ID != TOKEN_RPAREN)
         syntax_error(L, "')'");
     getNextToken(L);
+
+    // Check for existing function declaration
+    Function *existing = lookup_function(funcName);
+    if (existing)
+    {
+        // Compare return types
+        if (!equal_types(&existing->returnType, &retType))
+        {
+            char prevRetType[56], newRetType[56];
+            format_type(&existing->returnType, prevRetType, sizeof(prevRetType));
+            format_type(&retType, newRetType, sizeof(newRetType));
+            char msg[256];
+            snprintf(msg, sizeof(msg), "Prototype %s %s(...) differs from previous declaration at file %s line %d",
+                     newRetType, funcName, L->filename, retTypeLine);
+            type_error(L->filename, funcNameLine, msg);
+        }
+        // Compare number of parameters
+        if (existing->numParams != numParams)
+        {
+            char msg[256];
+            snprintf(msg, sizeof(msg), "Prototype void %s(...) differs from previous declaration at file %s line %d",
+                     funcName, L->filename, retTypeLine);
+            type_error(L->filename, funcNameLine, msg);
+        }
+        // Compare parameter types
+        for (int i = 0; i < numParams; i++)
+        {
+            if (!equal_types(&existing->params[i]->declType, &params[i]->declType))
+            {
+                char prevParamType[52], newParamType[52];
+                format_type(&existing->params[i]->declType, prevParamType, sizeof(prevParamType));
+                format_type(&params[i]->declType, newParamType, sizeof(newParamType));
+                char msg[256];
+                snprintf(msg, sizeof(msg), "Prototype void %s(%s) differs from previous declaration at file %s line %d",
+                         funcName, newParamType, L->filename, retTypeLine);
+                type_error(L->filename, funcNameLine, msg);
+            }
+        }
+        // If defined, ensure not redefining
+        if (existing->defined)
+        {
+            char msg[256];
+            snprintf(msg, sizeof(msg), "Redefinition of function %s, previously defined at file %s line %d",
+                     funcName, L->filename, retTypeLine);
+            type_error(L->filename, funcNameLine, msg);
+        }
+    }
 
     // Create or update function symbol
     Function *func = my_malloc(sizeof(Function));
