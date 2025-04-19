@@ -696,7 +696,12 @@ Expression *parse_unary(lexer *L)
         Expression *operand = parse_unary(L);
         return make_unary(OP_INC, operand, L->lineno);
     }
-    
+    if (L->current.ID == TOKEN_TILDE) // Handle ~
+    {
+        getNextToken(L);
+        Expression *operand = parse_unary(L);
+        return make_unary(OP_TILDE, operand, L->lineno);
+    }
     if (L->current.ID == TOKEN_DEC) // Handle --
     {
         getNextToken(L);
@@ -849,7 +854,7 @@ Expression *parse_primary(lexer *L)
     return node;
 }
 
-Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal)
+Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal, bool isConst)
 {
     int buf_pos = 0;
     Statement *stmt = my_malloc(sizeof(Statement));
@@ -860,15 +865,8 @@ Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal)
     memset(decl, 0, sizeof(Declaration));
 
     // Optional const modifier
-    bool isConst = false;
     token t = (buf_pos < buf->count) ? buf->tokens[buf_pos++] : L->current;
-    if (t.ID == TOKEN_IDENTIFIER && strcmp(t.attrb, "const") == 0)
-    {
-        isConst = true;
-        if (buf_pos <= buf->count)
-            getNextToken(L);
-        t = (buf_pos < buf->count) ? buf->tokens[buf_pos++] : L->current;
-    }
+    
     // Parse type
     Type type = {0};
     if (t.ID == TOKEN_TYPE)
@@ -957,7 +955,7 @@ Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal)
 }
 
 // A statement can be a declaration, an expression statement, or a return statement, etc.
-Statement *parser_statement(lexer *L, LookaheadBuffer *buf, bool isGlobal)
+Statement *parser_statement(lexer *L, LookaheadBuffer *buf, bool isGlobal, bool isConst)
 {
     Statement *stmt = NULL;
 
@@ -969,7 +967,7 @@ Statement *parser_statement(lexer *L, LookaheadBuffer *buf, bool isGlobal)
         {
             if (L->current.ID != TOKEN_LBRACKET && L->current.ID != TOKEN_SEMICOLON)
                 getNextToken(L);
-            stmt = parser_declaration(L, buf, isGlobal);
+            stmt = parser_declaration(L, buf, isGlobal, isConst);
             return stmt;
         }
     }
@@ -1016,14 +1014,25 @@ Statement *parse_compound(lexer *L)
     int count = 0;
     LookaheadBuffer buf;
     init_lookahead(&buf);
-
+    bool isConst;
     while (L->current.ID != TOKEN_RBRACE)
     {
         clear_lookahead(&buf);
+        isConst = false;
+        if (L->current.ID == TOKEN_CONST) {
+            isConst = true;
+            getNextToken(L);
+        }
         if (L->current.ID == TOKEN_TYPE)
         {
             push_token(&buf, L->current);
             getNextToken(L);
+            if (L->current.ID == TOKEN_CONST) {
+                if (isConst)
+                    syntax_error(L,"type");
+                isConst = true;
+                getNextToken(L);
+            }
             if (L->current.ID == TOKEN_IDENTIFIER)
             {
                 push_token(&buf, L->current);
@@ -1032,7 +1041,7 @@ Statement *parse_compound(lexer *L)
         }
         if (L->current.ID == TOKEN_IDENTIFIER)
             {
-            stmts[count++] = parser_statement(L, NULL, true);
+            stmts[count++] = parser_statement(L, NULL, true,isConst);
             }
             else
         {
@@ -1041,11 +1050,11 @@ Statement *parse_compound(lexer *L)
                 if (L->current.ID != TOKEN_LBRACKET && L->current.ID != TOKEN_SEMICOLON)
                 {
                     if (buf.tokens[0].ID == TOKEN_TYPE && buf.tokens[1].ID == TOKEN_IDENTIFIER)
-                        stmts[count++] = parser_statement(L, &buf, false);
+                        stmts[count++] = parser_statement(L, &buf, false, isConst);
                     if (L->current.ID == TOKEN_IDENTIFIER)
                         buf.tokens[1] = L->current;
                 }
-                stmts[count++] = parser_statement(L, &buf, false);
+                stmts[count++] = parser_statement(L, &buf, false, isConst);
 
 
             } while (L->current.ID == TOKEN_COMMA);
@@ -1262,7 +1271,7 @@ Statement *parse_struct(lexer *L, LookaheadBuffer *buf)
 
     while (L->current.ID != TOKEN_RBRACE)
     {
-        Statement *memberStmt = parser_statement(L, buf, true); // Note: parser_statement uses lexer directly
+        Statement *memberStmt = parser_statement(L, buf, true, false); // Note: parser_statement uses lexer directly
         sdef->members[sdef->numMembers] = my_malloc(sizeof(Declaration));
         *(sdef->members[sdef->numMembers]) = memberStmt->u.decl;
         sdef->numMembers++;
@@ -1293,17 +1302,27 @@ Statement **parse_program(lexer *L, int *stmtCount)
     int count = 0;
     LookaheadBuffer buf;
     init_lookahead(&buf);
-
+    bool isConst;
     while (L->current.ID != END)
     {
 
         clear_lookahead(&buf);
+        isConst = false;
+        if(L->current.ID == TOKEN_CONST)
+        {
+            isConst = true;
+            getNextToken(L);
+        }
         push_token(&buf, L->current); // Store first token (e.g., "int", "struct")
         if (buf.count > 0 && (buf.tokens[0].ID == TOKEN_TYPE ||
                               (buf.tokens[0].ID == TOKEN_IDENTIFIER && strcmp(buf.tokens[0].attrb, "struct") == 0)))
         {
             getNextToken(L);
-
+            if(L->current.ID == TOKEN_CONST)
+            {
+                isConst = true;
+                getNextToken(L);
+            }
             // Line is either a function, variable or struct
             push_token(&buf, L->current);
 
@@ -1340,7 +1359,7 @@ Statement **parse_program(lexer *L, int *stmtCount)
                                 buf.tokens[1] = L->current;
                             }
                         }
-                        stmts[count++] = parser_statement(L, &buf, false);
+                        stmts[count++] = parser_statement(L, &buf, false, isConst);
 
                     } while (L->current.ID == TOKEN_COMMA);
 
@@ -1365,7 +1384,7 @@ Statement **parse_program(lexer *L, int *stmtCount)
         else
         {
             // Other statements (e.g., expressions)
-            stmts[count++] = parser_statement(L, NULL, true);
+            stmts[count++] = parser_statement(L, NULL, true, isConst);
         }
     }
 
@@ -1375,10 +1394,207 @@ Statement **parse_program(lexer *L, int *stmtCount)
 
 void type_check_expression(Expression *expr, const char *filename, FILE *output)
 {
-
-    char typeStr[128];
-    format_type(&expr->exprType, typeStr, sizeof(typeStr));
-    fprintf(output, "File %s Line %d: expression has type %s\n", filename, expr->lineno, typeStr);
+    if (!expr)
+        return;
+    switch (expr->kind)
+    {
+    case EXPR_LITERAL:
+        // Type set in parse_primary
+        break;
+    case EXPR_IDENTIFIER:
+        {
+            VarSymbol *vs = lookup_variable(expr->value);
+            if (vs)
+            {
+                expr->exprType = vs->type;
+            }
+            else
+            {
+                Function *func = lookup_function(expr->value);
+                if (!func)
+                {
+                    char msg[256];
+                    snprintf(msg, sizeof(msg), "Undeclared variable or function %s", expr->value);
+                    type_error(filename, expr->lineno, msg);
+                }
+                expr->exprType = func->returnType;
+            }
+        }
+        break;
+    case EXPR_UNARY:
+        {
+            type_check_expression(expr->right, filename, output);
+            Type operandType = expr->right->exprType;
+            if (expr->op == OP_NEG)
+            {
+                if (operandType.base != BASE_INT && operandType.base != BASE_FLOAT && operandType.base != BASE_CHAR)
+                {
+                    char typeStr[128];
+                    format_type(&operandType, typeStr, sizeof(typeStr));
+                    char msg[256];
+                    snprintf(msg, sizeof(msg), "Invalid operation: - %s", typeStr);
+                    type_error(filename, expr->lineno, msg);
+                }
+                expr->exprType = operandType;
+            }
+            else if (expr->op == OP_TILDE)
+            {
+                if (operandType.base != BASE_INT && operandType.base != BASE_CHAR)
+                {
+                    char typeStr[128];
+                    format_type(&operandType, typeStr, sizeof(typeStr));
+                    char msg[256];
+                    snprintf(msg, sizeof(msg), "Invalid operation: ~ %s", typeStr);
+                    type_error(filename, expr->lineno, msg);
+                }
+                expr->exprType = operandType;
+            }
+            else if (expr->op == OP_NOT)
+            {
+                if (operandType.base == BASE_VOID)
+                {
+                    char typeStr[128];
+                    format_type(&operandType, typeStr, sizeof(typeStr));
+                    char msg[256];
+                    snprintf(msg, sizeof(msg), "Invalid operation: ! %s", typeStr);
+                    type_error(filename, expr->lineno, msg);
+                }
+                expr->exprType = (Type){BASE_INT, false, false, ""}; // ! returns int
+            }
+            else if (expr->op == OP_INC || expr->op == OP_DEC)
+            {
+                if (operandType.isConst)
+                {
+                    char typeStr[128];
+                    format_type(&operandType, typeStr, sizeof(typeStr));
+                    char msg[256];
+                    snprintf(msg, sizeof(msg), "Invalid operation: %s %s",
+                             expr->op == OP_INC ? "++" : "--", typeStr);
+                    type_error(filename, expr->lineno, msg);
+                }
+                if (operandType.base != BASE_INT && operandType.base != BASE_CHAR)
+                {
+                    char typeStr[128];
+                    format_type(&operandType, typeStr, sizeof(typeStr));
+                    char msg[256];
+                    snprintf(msg, sizeof(msg), "Invalid operation: %s %s",
+                             expr->op == OP_INC ? "++" : "--", typeStr);
+                    type_error(filename, expr->lineno, msg);
+                }
+                expr->exprType = operandType;
+            }
+        }
+        break;
+    case EXPR_BINARY:
+        {
+            type_check_expression(expr->left, filename, output);
+            type_check_expression(expr->right, filename, output);
+            Type leftType = expr->left->exprType;
+            Type rightType = expr->right->exprType;
+            if (expr->op == OP_PLUS || expr->op == OP_MINUS ||
+                expr->op == OP_MUL || expr->op == OP_DIV || expr->op == OP_MOD)
+            {
+                if ((leftType.base != BASE_INT && leftType.base != BASE_FLOAT) ||
+                    (rightType.base != BASE_INT && rightType.base != BASE_FLOAT))
+                {
+                    char leftStr[52], rightStr[52];
+                    format_type(&leftType, leftStr, sizeof(leftStr));
+                    format_type(&rightType, rightStr, sizeof(rightStr));
+                    char msg[256];
+                    snprintf(msg, sizeof(msg), "Invalid operation: %s %s %s",
+                             leftStr, expr->op == OP_PLUS ? "+" : expr->op == OP_MINUS ? "-" :
+                             expr->op == OP_MUL ? "*" : expr->op == OP_DIV ? "/" : "%", rightStr);
+                    type_error(filename, expr->lineno, msg);
+                }
+                if (can_widen(&leftType, &rightType))
+                {
+                    widen_expression(expr->left, &rightType);
+                    expr->exprType = rightType;
+                }
+                else if (can_widen(&rightType, &leftType))
+                {
+                    widen_expression(expr->right, &leftType);
+                    expr->exprType = leftType;
+                }
+                else
+                {
+                    expr->exprType = leftType;
+                }
+            }
+            else if (expr->op == OP_EQ || expr->op == OP_NE ||
+                     expr->op == OP_LT || expr->op == OP_LE ||
+                     expr->op == OP_GT || expr->op == OP_GE)
+            {
+                expr->exprType = (Type){BASE_INT, false, false, ""};
+            }
+            else if (expr->op == OP_AND || expr->op == OP_OR)
+            {
+                expr->exprType = (Type){BASE_INT, false, false, ""};
+            }
+        }
+        break;
+    case EXPR_ASSIGN:
+        {
+            type_check_expression(expr->left, filename, output);
+            type_check_expression(expr->right, filename, output);
+            Type leftType = expr->left->exprType;
+            Type rightType = expr->right->exprType;
+            if (!equal_types(&leftType, &rightType))
+            {
+                if (can_widen(&rightType, &leftType))
+                {
+                    widen_expression(expr->right, &leftType);
+                }
+                else
+                {
+                    char leftStr[52], rightStr[52];
+                    format_type(&leftType, leftStr, sizeof(leftStr));
+                    format_type(&rightType, rightStr, sizeof(rightStr));
+                    char msg[256];
+                    snprintf(msg, sizeof(msg), "Type mismatch: %s = %s", leftStr, rightStr);
+                    type_error(filename, expr->lineno, msg);
+                }
+            }
+            expr->exprType = leftType;
+        }
+        break;
+    case EXPR_CALL:
+        {
+            type_check_expression(expr->left, filename, output);
+            for (int i = 0; i < expr->numArgs; i++)
+                type_check_expression(expr->args[i], filename, output);
+            expr->exprType = expr->left->exprType;
+        }
+        break;
+    case EXPR_INDEX:
+        {
+            type_check_expression(expr->left, filename, output);
+            type_check_expression(expr->right, filename, output);
+            expr->exprType = expr->left->exprType;
+            expr->exprType.isArray = false;
+        }
+        break;
+    case EXPR_MEMBER:
+        {
+            type_check_expression(expr->left, filename, output);
+            // expr->exprType set in make_member
+        }
+        break;
+    case EXPR_TERNARY:
+        {
+            type_check_expression(expr->left, filename, output);
+            type_check_expression(expr->args[0], filename, output);
+            type_check_expression(expr->args[1], filename, output);
+            expr->exprType = expr->args[0]->exprType;
+        }
+        break;
+    case EXPR_CAST:
+        {
+            type_check_expression(expr->left, filename, output);
+            // expr->exprType set in make_cast
+        }
+        break;
+    }
 }
 
 void type_check_statement(Statement *stmt, const char *filename, FILE *output)
@@ -1391,9 +1607,14 @@ void type_check_statement(Statement *stmt, const char *filename, FILE *output)
     switch (stmt->kind)
     {
     case STMT_EXPR:
-        if (stmt->u.expr)
-            type_check_expression(stmt->u.expr, filename, output);
-        break;
+    if (stmt->u.expr)
+    {
+        type_check_expression(stmt->u.expr, filename, output);
+        char typeStr[128];
+        format_type(&stmt->u.expr->exprType, typeStr, sizeof(typeStr));
+        fprintf(output, "File %s Line %d: expression has type %s\n", filename, stmt->lineno, typeStr);
+    }
+    break;
     case STMT_DECL:
     {
         char typeStr[128];

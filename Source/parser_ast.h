@@ -136,7 +136,7 @@ typedef struct LookaheadBuffer {
 
 
 // Parser Function Prototypes 
-Statement *parser_statement(lexer *L, LookaheadBuffer *buf, bool isGlobal);
+Statement *parser_statement(lexer *L, LookaheadBuffer *buf, bool isGlobal, bool isConst);
 Statement *parse_compound(lexer *L);
 Expression *parse_expression(lexer *L);
 Expression *parse_assignment(lexer *L);
@@ -151,7 +151,7 @@ Expression *parse_unary(lexer *L);
 Expression *parse_primary(lexer *L);
 
 // Declaration parsing 
-Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal);
+Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal, bool isConst);
 
 // Parsing function prototypes and struct declarations
 Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf);
