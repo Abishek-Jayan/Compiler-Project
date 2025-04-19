@@ -41,7 +41,7 @@ typedef enum {
     OP_PLUS, OP_MINUS, OP_MUL, OP_DIV, OP_MOD,
     OP_EQ, OP_NE, OP_LT, OP_LE, OP_GT, OP_GE,
     OP_AND, OP_OR,
-    OP_NOT, OP_NEG, OP_INC, OP_DEC,
+    OP_NOT, OP_NEG, OP_INC, OP_DEC, OP_TILDE,
     OP_ASSIGN,
     OP_CAST, // explicit cast (e.g. (int)x)
     OP_PLUS_ASSIGN,
@@ -89,6 +89,18 @@ typedef struct Declaration {
     Expression *init;    // initializer expression (may be NULL)
 } Declaration;
 
+
+// Function prototype / definition
+typedef struct Function {
+    char name[64];
+    Type returnType;
+    int numParams;
+    Declaration **params;
+    struct Statement *body;      
+    bool defined;         // true if function defined, false if only prototype
+    struct Function *next;
+} Function;
+
 // Statement node 
 typedef struct Statement {
     StmtKind kind;
@@ -96,22 +108,14 @@ typedef struct Statement {
     union {
         Declaration decl;
         Expression *expr;
+        Function *func;
     } u;
     // For compound statements (block), store an array of statements
     int numStmts;
     struct Statement **stmts;
 } Statement;
 
-// Function prototype / definition
-typedef struct Function {
-    char name[64];
-    Type returnType;
-    int numParams;
-    Declaration **params; // array of parameter declarations
-    Statement *body;      // function body (NULL if just a prototype)
-    bool defined;         // true if function defined, false if only prototype
-    struct Function *next;
-} Function;
+
 
 // Struct definition for user-defined structs
 typedef struct StructDef {

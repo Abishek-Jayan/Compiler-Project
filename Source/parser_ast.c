@@ -252,12 +252,26 @@ Expression *make_binary(Expression *left, Operator op, Expression *right, int li
     node->left = left;
     node->right = right;
     node->numArgs = 0;
-    /* Type checking (with automatic widening) is done later; here we set a provisional type */
     if (left && right)
     {
+        // Check for invalid void types in relational/logical operators
+        if ((op == OP_EQ || op == OP_NE || op == OP_LT || op == OP_LE ||
+             op == OP_GT || op == OP_GE || op == OP_AND || op == OP_OR) &&
+            (left->exprType.base == BASE_VOID || right->exprType.base == BASE_VOID))
+        {
+            char leftType[22], rightType[22];
+            format_type(&left->exprType, leftType, sizeof(leftType));
+            format_type(&right->exprType, rightType, sizeof(rightType));
+            char msg[256];
+            snprintf(msg, sizeof(msg), "Invalid operation: %s %s %s",
+                     leftType, op == OP_EQ ? "==" : op == OP_NE ? "!=" :
+                     op == OP_LT ? "<" : op == OP_LE ? "<=" :
+                     op == OP_GT ? ">" : op == OP_GE ? ">=" :
+                     op == OP_AND ? "&&" : "||", rightType);
+            type_error(inputfilename, lineno, msg);
+        }
         if (!equal_types(&left->exprType, &right->exprType))
         {
-            // Try widening if possible
             if (can_widen(&left->exprType, &right->exprType))
             {
                 widen_expression(left, &right->exprType);
@@ -292,8 +306,19 @@ Expression *make_unary(Operator op, Expression *operand, int lineno)
     node->right = operand;
     node->numArgs = 0;
     node->exprType = operand->exprType;
-    if ((op == OP_INC || op == OP_DEC) && operand->exprType.isConst)
-        type_error(inputfilename, lineno, "Invalid operation on const item");
+    if ((op == OP_INC || op == OP_DEC))
+    {
+        if (operand->exprType.isConst)
+            type_error(inputfilename, lineno, "Invalid operation on const item");
+        if (operand->exprType.isArray)
+        {
+            char typeStr[128];
+            format_type(&operand->exprType, typeStr, sizeof(typeStr));
+            char msg[256];
+            snprintf(msg, sizeof(msg), "Invalid operation: %s %s", typeStr, op == OP_INC ? "++" : "--");
+            type_error(inputfilename, lineno, msg);
+        }
+    }
     return node;
 }
 
@@ -407,13 +432,10 @@ Expression *make_index(Expression *arrayExpr, Expression *indexExpr, int lineno)
     node->left = arrayExpr;
     node->right = indexExpr;
     node->numArgs = 0;
-    /* Check that arrayExpr is declared as an array */
     if (!arrayExpr->exprType.isArray)
         type_error(inputfilename, lineno, "Attempt to index a non–array type");
-    /* Check that index is integer */
     if (indexExpr->exprType.base != BASE_INT)
         type_error(inputfilename, lineno, "Array index is not of integer type");
-    /* Resulting type is same as array element (mark as non-array) */
     node->exprType = arrayExpr->exprType;
     node->exprType.isArray = false;
     return node;
@@ -658,33 +680,37 @@ Expression *parse_unary(lexer *L)
 {
     if (L->current.ID == TOKEN_MINUS)
     {
-
         getNextToken(L);
         Expression *operand = parse_unary(L);
         return make_unary(OP_NEG, operand, L->lineno);
     }
     if (L->current.ID == TOKEN_EXCLAMATION)
     {
-
         getNextToken(L);
         Expression *operand = parse_unary(L);
         return make_unary(OP_NOT, operand, L->lineno);
     }
-    /* For casts: look for a pattern like '(' type ')' expression */
+    if (L->current.ID == TOKEN_INC) // Handle ++
+    {
+        getNextToken(L);
+        Expression *operand = parse_unary(L);
+        return make_unary(OP_INC, operand, L->lineno);
+    }
+    
+    if (L->current.ID == TOKEN_DEC) // Handle --
+    {
+        getNextToken(L);
+        Expression *operand = parse_unary(L);
+        return make_unary(OP_DEC, operand, L->lineno);
+    }
     if (L->current.ID == TOKEN_LPAREN)
     {
-        // Lookahead to see if it’s a type cast.
-
         getNextToken(L);
-        // If we see a type keyword (int, float, char, or struct), then parse a cast.
         if (L->current.ID == TOKEN_IDENTIFIER || L->current.ID == TOKEN_TYPE)
         {
-            // For simplicity, assume that if the current token attribute matches a type name
-            // or "struct", then we have a cast.
             char typeName[64];
             strncpy(typeName, L->current.attrb, sizeof(typeName) - 1);
             getNextToken(L);
-            // If struct, next token should be identifier of struct name.
             Type castType = {0};
             if (strcmp(typeName, "struct") == 0)
             {
@@ -714,13 +740,12 @@ Expression *parse_unary(lexer *L)
             castType.isArray = false;
             if (L->current.ID != TOKEN_RPAREN)
                 syntax_error(L, "')' after cast type");
-            getNextToken(L); // consume ')'
+            getNextToken(L);
             Expression *expr = parse_unary(L);
             return make_cast(castType, expr, L->lineno);
         }
         else
         {
-            // Not a cast; backtrack: treat as parenthesized expression.
             Expression *expr = parse_assignment(L);
             if (L->current.ID != TOKEN_RPAREN)
                 syntax_error(L, "')'");
@@ -893,8 +918,9 @@ Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal)
     if (L->current.ID == TOKEN_LBRACKET)
     {
         getNextToken(L); // consume '['
-        if (L->current.ID == TOKEN_INT)
-            getNextToken(L); // consume int literal
+        while(L->current.ID != TOKEN_RBRACKET && L->current.ID != END)
+            getNextToken(L);
+
         if (L->current.ID != TOKEN_RBRACKET)
             syntax_error(L, "']'");
         getNextToken(L); // consume ']'
@@ -1024,12 +1050,13 @@ Statement *parse_compound(lexer *L)
 
             } while (L->current.ID == TOKEN_COMMA);
         }
-        if (L->current.ID != TOKEN_SEMICOLON)
+        if (L->current.ID != TOKEN_SEMICOLON && L->current.ID != TOKEN_RBRACE)
         {
             syntax_error(L, "';'");
         }
 
-        getNextToken(L);
+        if (L->current.ID == TOKEN_SEMICOLON)
+            getNextToken(L);
     }
     if (L->current.ID != TOKEN_RBRACE)
         syntax_error(L, "'}'");
@@ -1045,7 +1072,6 @@ Statement *parse_compound(lexer *L)
 Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf)
 {
     int buf_pos = 0;
-    // Parse type specifier and possible "const"
 
     bool isConst = false;
     token t = (buf_pos < buf->count) ? buf->tokens[buf_pos++] : L->current;
@@ -1151,9 +1177,9 @@ Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf)
             syntax_error(L, "parameter name");
         strncpy(param->name, L->current.attrb, sizeof(param->name) - 1);
         getNextToken(L);
+        param->declType = pType;
         add_variable(param->name, param->declType, false);
 
-        param->declType = pType;
         param->initialized = false;
         param->init = NULL;
         params[numParams++] = param;
@@ -1192,54 +1218,48 @@ Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf)
     }
     else
     {
-        stmt->kind = STMT_EXPR;
+        stmt->kind = STMT_COMPOUND;
         stmt->u.expr = NULL;
         Statement *body = parse_compound(L);
         func->body = body;
         func->defined = true;
         stmt = body;
+        stmt->u.func = func;
     }
     return stmt;
 }
 
-/* Parse a struct definition:
-    struct identifier { declaration-list } ;
-*/
+
 Statement *parse_struct(lexer *L, LookaheadBuffer *buf)
 {
     int buf_pos = 0;
 
-    // Expect "struct"
     token t = (buf_pos < buf->count) ? buf->tokens[buf_pos++] : L->current;
     if (t.ID != TOKEN_IDENTIFIER || strcmp(t.attrb, "struct") != 0)
         syntax_error(L, "struct");
     if (buf_pos <= buf->count)
-        getNextToken(L); // Consume if not from buffer
+        getNextToken(L);
 
-    // Expect struct name
     t = (buf_pos < buf->count) ? buf->tokens[buf_pos++] : L->current;
     if (t.ID != TOKEN_IDENTIFIER)
         syntax_error(L, "struct name");
     char structName[64];
     strncpy(structName, t.attrb, sizeof(structName) - 1);
     if (buf_pos <= buf->count)
-        getNextToken(L); // Consume if not from buffer
+        getNextToken(L);
 
-    // Expect '{'
+   
     t = (buf_pos < buf->count) ? buf->tokens[buf_pos++] : L->current;
     if (t.ID != TOKEN_LBRACE)
         syntax_error(L, "'{' after struct name");
     if (buf_pos <= buf->count)
-        getNextToken(L); // Consume if not from buffer
-
-    // Create a new struct definition
+        getNextToken(L); 
     StructDef *sdef = my_malloc(sizeof(StructDef));
     strncpy(sdef->name, structName, sizeof(sdef->name) - 1);
     sdef->numMembers = 0;
     sdef->members = my_malloc(20 * sizeof(Declaration *));
     sdef->isGlobal = true;
 
-    // Parse member declarations until '}'
     while (L->current.ID != TOKEN_RBRACE)
     {
         Statement *memberStmt = parser_statement(L, buf, true); // Note: parser_statement uses lexer directly
@@ -1249,17 +1269,15 @@ Statement *parse_struct(lexer *L, LookaheadBuffer *buf)
     }
     if (L->current.ID != TOKEN_RBRACE)
         syntax_error(L, "'}' after struct definition");
-    getNextToken(L); // consume '}'
+    getNextToken(L); 
 
     if (L->current.ID != TOKEN_SEMICOLON)
         syntax_error(L, "';' after struct definition");
     getNextToken(L);
 
-    // Add sdef to struct symbol table
     sdef->next = structSymbols;
     structSymbols = sdef;
 
-    // Return a dummy statement
     Statement *dummy = my_malloc(sizeof(Statement));
     dummy->kind = STMT_EXPR;
     dummy->lineno = L->lineno;
@@ -1367,6 +1385,9 @@ void type_check_statement(Statement *stmt, const char *filename, FILE *output)
 {
     if (!stmt)
         return;
+    static Function *func = NULL;
+    if (stmt->kind == STMT_COMPOUND && stmt->u.func)
+        func = stmt->u.func;
     switch (stmt->kind)
     {
     case STMT_EXPR:
@@ -1384,6 +1405,23 @@ void type_check_statement(Statement *stmt, const char *filename, FILE *output)
         break;
     }
     case STMT_RETURN:
+        if (!func)
+        {
+            fprintf(stderr, "No function context for return statement\n");
+            exit(1);
+        }
+        Type expectedType = func->returnType;
+        
+        Type actualType = stmt->u.expr ? stmt->u.expr->exprType : (Type){BASE_VOID, false, false, ""};
+        if (!equal_types(&actualType, &expectedType))
+        {
+            char actualStr[52], expectedStr[52];
+            format_type(&actualType, actualStr, sizeof(actualStr));
+            format_type(&expectedType, expectedStr, sizeof(expectedStr));
+            char msg[256];
+            snprintf(msg, sizeof(msg), "Return type mismatch: was %s, expected %s", actualStr, expectedStr);
+            type_error(filename, stmt->lineno, msg);
+        }
         if (stmt->u.expr)
             type_check_expression(stmt->u.expr, filename, output);
         break;
