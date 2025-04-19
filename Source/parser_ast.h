@@ -42,20 +42,23 @@ typedef enum {
     OP_EQ, OP_NE, OP_LT, OP_LE, OP_GT, OP_GE,
     OP_AND, OP_OR,
     OP_NOT, OP_NEG, OP_INC, OP_DEC,
-    OP_ASSIGN,         // '=' operator
-    OP_CAST           // explicit cast (e.g. (int)x)
+    OP_ASSIGN,
+    OP_CAST, // explicit cast (e.g. (int)x)
+    OP_PLUS_ASSIGN,
+    OP_MINUS_ASSIGN,
+    OP_MUL_ASSIGN,
+    OP_DIV_ASSIGN,       
 } Operator;
 
-// Expression node. For simplicity each node stores its computed type here.
+// Expression node
 typedef struct Expression {
     ExprKind kind;
-    int lineno;          // location (typically where expression statement ends)
+    int lineno;          
     Type exprType;       // computed type
 
     // Operator kind, if applicable (for binary/unary, cast, assignment, call, member)
     Operator op;
 
-    // For literals and identifiers, store the textual value 
     char value[128];
 
     // For function calls: number of arguments, array of pointers 
@@ -70,15 +73,15 @@ typedef struct Expression {
     char memberName[64];
 } Expression;
 
-/* Statement kinds */
+// Statement kinds
 typedef enum {
-    STMT_DECL,        // declaration statement (including optional initialization)
-    STMT_EXPR,        // expression statement
-    STMT_RETURN,      // return statement
+    STMT_DECL,        
+    STMT_EXPR,        
+    STMT_RETURN,      
     STMT_COMPOUND     // compound statement (a block)
 } StmtKind;
 
-/* Declaration kinds are embedded in STMT_DECL. */
+// Declaration kinds are embedded in STMT_DECL.
 typedef struct Declaration {
     Type declType;       // declared type including array or const info
     char name[64];       // variable name
@@ -86,10 +89,10 @@ typedef struct Declaration {
     Expression *init;    // initializer expression (may be NULL)
 } Declaration;
 
-/* Statement node */
+// Statement node 
 typedef struct Statement {
     StmtKind kind;
-    int lineno;        // line number at end of statement
+    int lineno;        
     union {
         Declaration decl;
         Expression *expr;
@@ -110,7 +113,7 @@ typedef struct Function {
     struct Function *next;
 } Function;
 
-/* Struct definition for user-defined structs */
+// Struct definition for user-defined structs
 typedef struct StructDef {
     char name[64];
     int numMembers;
@@ -129,7 +132,7 @@ typedef struct LookaheadBuffer {
 
 
 // Parser Function Prototypes 
-Statement *parser_statement(lexer *L, LookaheadBuffer *buf, bool isfunc);
+Statement *parser_statement(lexer *L, LookaheadBuffer *buf, bool isGlobal);
 Statement *parse_compound(lexer *L);
 Expression *parse_expression(lexer *L);
 Expression *parse_assignment(lexer *L);
@@ -144,7 +147,7 @@ Expression *parse_unary(lexer *L);
 Expression *parse_primary(lexer *L);
 
 // Declaration parsing 
-Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isfunc);
+Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal);
 
 // Parsing function prototypes and struct declarations
 Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf);
@@ -155,5 +158,6 @@ Statement **parse_program(lexer *L, int *stmtCount);
 // Utility initialization routines 
 void init_symbol_tables();
 void type_check_statement(Statement *stmt, const char *filename, FILE *output);
+int parse_type_tokens(lexer *L, LookaheadBuffer *buf, token *typeTokens, int *typeTokenCount);
 
 #endif
