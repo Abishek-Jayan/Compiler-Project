@@ -16,6 +16,10 @@ Lexer has been implemented. Run ```./mycc -1 input_filename output_filename``` t
 ## Phase 2
 Parser has been implemented. Run ```./mycc -2 input_filename``` to run the parser.
 
+## Phase 3
+Type Checker has been implemented. Run ```./mycc -3 input_filename``` to run the type checker.
+
+
 ## Source Files
 1. main.c: Contains the main logic for the compiler. Handles command-line
 arguments and displays version information.
@@ -25,8 +29,9 @@ arguments and displays version information.
 5. parser.c: Contains the logic for the parser (Phase 2)
 6. parser.h: Header file for importing parser function in main.c
 7. lexer.o ,main.o and parser.o: Files created by makefile for building mycc. Not git tracked so can be ignored.
-
+8. parser_ast.c: Contains the logic for the type checker (Phase 3)
+9.parser_ast.h: Header file for importing type checker function in main.c
 
 
 ## High-Level Overview
-The compiler is currently in Phase 2. By providing an input file  we can have the parser parse the instructions and get the appropriate output into an output file.
+The compiler is currently in Phase 3. By providing an input file  we can have the parser parse the instructions and get the appropriate output into an output file.
