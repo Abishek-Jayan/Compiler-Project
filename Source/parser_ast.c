@@ -956,6 +956,8 @@ Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal, boo
         t = (buf_pos < buf->count) ? buf->tokens[buf_pos++] : L->current;
         if (t.ID != TOKEN_IDENTIFIER)
             syntax_error(L, "struct name");
+        if (!lookup_struct(buf->tokens[0].attrb))
+            syntax_error(L,"unknown struct");
         strncpy(type.structName, t.attrb, sizeof(type.structName) - 1);
         strncpy(decl->name, t.attrb, sizeof(decl->name) - 1);
 
