@@ -6,6 +6,48 @@
 #include <string.h>
 #include <ctype.h>
 
+
+typedef struct StructTable {
+    char* key;
+    char* value;
+} StructTable;
+
+StructTable* struct_table = NULL;
+int size = 0;
+int capacity = 0;
+
+void append(StructTable** table, int* size, int* capacity, const char* key, const char* value) {
+    if (*size >= *capacity) {
+        *capacity = (*capacity == 0) ? 1 : *capacity * 2;
+        StructTable* temp = realloc(*table, *capacity * sizeof(StructTable));
+        if (temp == NULL) {
+            printf("Memory allocation failed!\n");
+            exit(1);
+        }
+        *table = temp;
+    }
+
+    // Allocate memory for key and value
+    (*table)[*size].key = strdup(key);   // Copy key
+    (*table)[*size].value = strdup(value); // Copy value
+    if ((*table)[*size].key == NULL || (*table)[*size].value == NULL) {
+        printf("String duplication failed!\n");
+        exit(1);
+    }
+
+    (*size)++;
+}
+
+char* lookup(StructTable* table, int size, const char* key) {
+    for (int i = 0; i < size; i++) {
+        if (strcmp(table[i].key, key) == 0) {
+            return table[i].value;
+        }
+    }
+    return NULL; // Key not found
+}
+
+
 char *inputfilename;
 
 // Initialises a lookahead buffer to save lexer states
@@ -34,7 +76,7 @@ void clear_lookahead(LookaheadBuffer *buf)
     buf->count = 0;
 }
 
-// Variable symbol
+/* Variable symbol */
 typedef struct VarSymbol
 {
     char name[64];
@@ -45,7 +87,7 @@ typedef struct VarSymbol
 
 VarSymbol *varSymbols = NULL;
 
-// Function symbol
+/* Function symbol */
 Function *funcSymbols = NULL;
 
 /* Struct symbol */
@@ -135,7 +177,7 @@ void type_error(const char *filename, int lineno, const char *msg)
     exit(1);
 }
 
-// Syntax error for parser
+/* Syntax error for parser */
 void syntax_error(lexer *L, const char *expected)
 {
     fprintf(stderr, "Syntax error in file %s line %u: Expected %s, but saw ",
@@ -158,7 +200,7 @@ void add_variable(const char *name, Type type, bool isGlobal)
 }
 void add_struct(const char *name, bool isGlobal)
 {
-    StructDef *struc = my_malloc(sizeof(StructDef));
+    StructDef *struc = my_malloc(sizeof(VarSymbol));
     strncpy(struc->name, name, sizeof(struc->name) - 1);
     struc->isGlobal = isGlobal;
     struc->next = structSymbols;
@@ -193,7 +235,6 @@ StructDef *lookup_struct(const char *name)
     StructDef *cur = structSymbols;
     while (cur)
     {
-
         if (strcmp(cur->name, name) == 0)
             return cur;
         cur = cur->next;
@@ -223,7 +264,8 @@ Expression *make_literal(const char *value, Type type, int lineno)
 }
 
 // Create an identifier node
-Expression *make_identifier(const char *name, int lineno) {
+Expression *make_identifier(const char *name, int lineno)
+{
     Expression *node = my_malloc(sizeof(Expression));
     node->kind = EXPR_IDENTIFIER;
     node->lineno = lineno;
@@ -231,33 +273,26 @@ Expression *make_identifier(const char *name, int lineno) {
 
     // Check if it's a variable
     VarSymbol *vs = lookup_variable(name);
-    if (vs) {
+    if (vs)
+    {
         node->exprType = vs->type;
-        node->left = node->right = NULL;
-        node->numArgs = 0;
-        return node;
     }
-
-    // Check if it's a function
-    Function *func = lookup_function(name);
-    if (func) {
+    else
+    {
+        // Check if it's a function
+        Function *func = lookup_function(name);
+        if (!func)
+        {
+            StructDef *struc = lookup_struct(name);
+            if (!struc)
+                type_error(inputfilename, lineno, "Using undeclared variable or function");
+        }
         node->exprType = func->returnType;
-        node->left = node->right = NULL;
-        node->numArgs = 0;
-        return node;
     }
 
-    // Check if it's a struct instance
-    // StructDef *struc = lookup_struct(name);
-    // if (struc && struc. == BASE_STRUCT) {
-    //     node->exprType = struc->type;
-    //     node->left = node->right = NULL;
-    //     node->numArgs = 0;
-    //     return node;
-    // }
-
-    type_error(inputfilename, lineno, "Using undeclared variable or function");
-    return NULL; // unreachable
+    node->left = node->right = NULL;
+    node->numArgs = 0;
+    return node;
 }
 
 // Create a binary operator node
@@ -477,28 +512,32 @@ Expression *make_member(Expression *structExpr, const char *member, int lineno)
     if (structExpr->exprType.base != BASE_STRUCT)
         type_error(inputfilename, lineno, "Member selection on non-struct type");
     // Lookup struct definition in symbol table:
-    StructDef *sdef = lookup_struct(structExpr->exprType.structName);
-    if (!sdef) {
-        char msg[256];
-        snprintf(msg, sizeof(msg), "Undefined struct '%s'", structExpr->exprType.structName);
-        type_error(inputfilename, lineno, msg);
-    }
-
-    // Search for member in sdef
-    for (int i = 0; i < sdef->numMembers; i++) {
-        if (strcmp(sdef->members[i]->name, member) == 0) {
-            node->exprType = sdef->members[i]->declType;
-            if (structExpr->exprType.isConst)
-                node->exprType.isConst = true;
-            return node;
+    StructDef *sdef = structSymbols;
+    bool found = false;
+    while (sdef)
+    {
+        if (strcmp(sdef->name, lookup(struct_table,size, structExpr->exprType.structName)) == 0)
+        {
+            // Search for member in sdef
+            for (int i = 0; i < sdef->numMembers; i++)
+            {
+                if (strcmp(sdef->members[i]->name, member) == 0)
+                {
+                    node->exprType = sdef->members[i]->declType;
+                    /* Propagate const if the struct is const */
+                    if (structExpr->exprType.isConst)
+                        node->exprType.isConst = true;
+                    found = true;
+                    break;
+                }
+            }
+            break;
         }
+        sdef = sdef->next;
     }
-
-    char msg[256];
-    snprintf(msg, sizeof(msg), "Struct '%s' has no member '%s'", 
-             structExpr->exprType.structName, member);
-    type_error(inputfilename, lineno, msg);
-    return NULL; // unreachable
+    if (!found)
+        type_error(inputfilename, lineno, "Member not found in struct");
+    return node;
 }
 
 Expression *parse_assignment(lexer *L)
@@ -850,13 +889,12 @@ Expression *parse_primary(lexer *L)
         // Handle member selection: identifier '.' identifier
         while (L->current.ID == TOKEN_DOT)
         {
-            getNextToken(L);
+            getNextToken(L); // consume '.'
             if (L->current.ID != TOKEN_IDENTIFIER)
                 syntax_error(L, "member name after '.'");
             char member[64];
             strncpy(member, L->current.attrb, sizeof(member) - 1);
             getNextToken(L);
-
             node = make_member(node, member, L->lineno);
         }
         if (L->current.ID == TOKEN_INC || L->current.ID == TOKEN_DEC)
@@ -915,11 +953,11 @@ Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal, boo
     else if (t.ID == TOKEN_STRUCT)
     {
         type.base = BASE_STRUCT;
-        add_struct(t.attrb,false);
-
+        t = (buf_pos < buf->count) ? buf->tokens[buf_pos++] : L->current;
+        if (t.ID != TOKEN_IDENTIFIER)
+            syntax_error(L, "struct name");
         strncpy(type.structName, t.attrb, sizeof(type.structName) - 1);
         strncpy(decl->name, t.attrb, sizeof(decl->name) - 1);
-        t = (buf_pos < buf->count) ? buf->tokens[buf_pos++] : L->current;
 
     }
 
@@ -951,8 +989,7 @@ Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal, boo
     decl->declType = type;
 
     // Add declaration to symbol table
-    if(type.base != BASE_STRUCT)
-        add_variable(decl->name, type, isGlobal);
+    add_variable(decl->name, type, isGlobal);
     // Optional initialization
     if (L->current.ID == TOKEN_EQUAL)
     {
@@ -1059,12 +1096,10 @@ Statement *parse_compound(lexer *L)
                 isStruct = true;
                 getNextToken(L);
 
-
             }
 
             push_token(&buf, L->current);
             getNextToken(L);
-
             if (L->current.ID == TOKEN_CONST)
             {
                 if (isConst)
@@ -1090,7 +1125,7 @@ Statement *parse_compound(lexer *L)
                 if(isStruct)
                 {
                     buf.tokens[0].ID = TOKEN_STRUCT;
-
+                    append(&struct_table, &size, &capacity, buf.tokens[1].attrb, buf.tokens[0].attrb);                
                 }
                 
                 if (L->current.ID != TOKEN_LBRACKET && L->current.ID != TOKEN_SEMICOLON)
@@ -1352,7 +1387,6 @@ Statement *parse_struct(lexer *L, LookaheadBuffer *buf)
         syntax_error(L, "'{' after struct name");
     if (buf_pos <= buf->count)
         getNextToken(L); // consume '{'
-
     StructDef *sdef = my_malloc(sizeof(StructDef));
     strncpy(sdef->name, structName, sizeof(sdef->name) - 1);
     sdef->numMembers = 0;
@@ -1391,27 +1425,27 @@ Statement *parse_struct(lexer *L, LookaheadBuffer *buf)
         if (L->current.ID != TOKEN_IDENTIFIER)
         {
             syntax_error(L, "variable");
-            getNextToken(L);
         }
         getNextToken(L);
-
         do
         {
             
-            
-                if (L->current.ID != TOKEN_LBRACKET && L->current.ID != TOKEN_SEMICOLON)
+                if (L->current.ID != TOKEN_LBRACKET)
                 {
-                    if (member_buf.tokens[0].ID == TOKEN_TYPE && member_buf.tokens[1].ID == TOKEN_IDENTIFIER)
-                        {Statement *memberStmt = parser_declaration(L, &member_buf, true, isConst);
-                            sdef->members[sdef->numMembers] = my_malloc(sizeof(Declaration));
-                            *(sdef->members[sdef->numMembers++]) = memberStmt->u.decl;
-                            free(memberStmt);
-                        }
                     if (L->current.ID == TOKEN_IDENTIFIER)
                     {
                         member_buf.tokens[1] = L->current;
                         getNextToken(L);
                     }
+                    if (member_buf.tokens[0].ID == TOKEN_TYPE && member_buf.tokens[1].ID == TOKEN_IDENTIFIER)
+                        {Statement *memberStmt = parser_declaration(L, &member_buf, true, isConst);
+                            sdef->members[sdef->numMembers] = my_malloc(sizeof(Declaration));
+                            *(sdef->members[sdef->numMembers]) = memberStmt->u.decl;
+                            sdef->numMembers++;
+
+                            free(memberStmt);
+                        }
+                    
 
                 }
                 if (L->current.ID == TOKEN_COMMA)
@@ -1486,6 +1520,7 @@ Statement **parse_program(lexer *L, int *stmtCount)
                 if (buf.tokens[0].ID == TOKEN_STRUCT &&
                     buf.tokens[1].ID == TOKEN_IDENTIFIER && buf.tokens[2].ID == TOKEN_LBRACE)
                 {
+
                     stmts[count++] = parse_struct(L, &buf);
                 }
 
