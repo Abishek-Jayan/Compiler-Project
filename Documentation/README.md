@@ -11,12 +11,15 @@
 6. When adding input and output files, make sure to add them into the Source folder.
 
 ## Phase 1
-Lexer has been implemented. Run ```./mycc -1 input_filename output_filename``` to run the lexer.
+Basic code setup has been implemented.
 
 ## Phase 2
-Parser has been implemented. Run ```./mycc -2 input_filename``` to run the parser.
+Lexer has been implemented. Run ```./mycc -1 input_filename output_filename``` to run the lexer.
 
 ## Phase 3
+Parser has been implemented. Run ```./mycc -2 input_filename``` to run the parser.
+
+## Phase 4
 Type Checker has been implemented. Run ```./mycc -3 input_filename``` to run the type checker.
 
 
@@ -34,4 +37,4 @@ arguments and displays version information.
 
 
 ## High-Level Overview
-The compiler is currently in Phase 3. By providing an input file  we can have the parser parse the instructions and get the appropriate output into an output file.
+The compiler is currently in Phase 4. By providing an input file  we can have the typechecker typecheck the parsed instructions and get the appropriate output into an output file.
