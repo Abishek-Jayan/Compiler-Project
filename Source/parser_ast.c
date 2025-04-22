@@ -844,7 +844,6 @@ Expression *parse_primary(lexer *L)
     else if (L->current.ID == TOKEN_IDENTIFIER)
     {
         /* Parse an identifier. This might be a variable, function call, or struct member access */
-
         node = make_identifier(L->current.attrb, L->lineno);
         getNextToken(L);
 
@@ -1080,12 +1079,14 @@ Statement *parse_compound(lexer *L)
     init_lookahead(&buf);
     bool isConst;
     bool isStruct;
+    bool parsingStruct;
+    token save_struct;
     while (L->current.ID != TOKEN_RBRACE)
     {
         clear_lookahead(&buf);
         isConst = false;
         isStruct = false;
-        
+        parsingStruct = false;
         if (L->current.ID == TOKEN_CONST)
         {
             isConst = true;
@@ -1096,6 +1097,7 @@ Statement *parse_compound(lexer *L)
             if(L->current.ID == TOKEN_STRUCT)
             {
                 isStruct = true;
+                save_struct = L->current;
                 getNextToken(L);
 
             }
@@ -1117,8 +1119,16 @@ Statement *parse_compound(lexer *L)
         }
         if (L->current.ID == TOKEN_IDENTIFIER)
         {
-
             stmts[count++] = parser_statement(L, NULL, true, isConst);
+        }
+        else if(isStruct && buf.tokens[0].ID == TOKEN_IDENTIFIER && L->current.ID==TOKEN_LBRACE)
+        {
+            push_token(&buf,buf.tokens[0]);
+            push_token(&buf,L->current);
+            buf.tokens[0]=save_struct;
+            stmts[count++] = parse_struct(L, &buf);
+            parsingStruct = true;
+
         }
         else
         {
@@ -1142,13 +1152,14 @@ Statement *parse_compound(lexer *L)
 
             } while (L->current.ID == TOKEN_COMMA);
         }
-        if (L->current.ID != TOKEN_SEMICOLON && L->current.ID != TOKEN_RBRACE)
+        if (!parsingStruct && L->current.ID != TOKEN_SEMICOLON && L->current.ID != TOKEN_RBRACE)
         {
             syntax_error(L, "';'");
         }
 
-        if (L->current.ID == TOKEN_SEMICOLON)
+        if (!parsingStruct && L->current.ID == TOKEN_SEMICOLON)
             getNextToken(L);
+        
     }
     if (L->current.ID != TOKEN_RBRACE)
         syntax_error(L, "'}'");
@@ -1397,11 +1408,11 @@ Statement *parse_struct(lexer *L, LookaheadBuffer *buf)
 
     LookaheadBuffer member_buf;
     init_lookahead(&member_buf);
-
+    bool isConst;
     while (L->current.ID != TOKEN_RBRACE)
     {
         clear_lookahead(&member_buf);
-        bool isConst = false;
+        isConst = false;
         if (L->current.ID == TOKEN_CONST)
         {
             isConst = true;
