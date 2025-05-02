@@ -4,6 +4,7 @@
 #include "lexer.h"
 #include "parser.h"
 #include "parser_ast.h"
+#include "codegen.h"
 
 void show_usage()
 {
@@ -145,7 +146,6 @@ int main(int argc, char *argv[])
     
         
         // Initialize symbol tables
-        init_symbol_tables();
         
         // Parse the program 
         int stmtCount = 0;
@@ -182,26 +182,21 @@ int main(int argc, char *argv[])
             exit(1);
         }
         strncpy(truncated_infilename, infilename, strlen(infilename) - 2);
-        char *outfilename = malloc(strlen(truncated_infilename) + strlen(".types") + 1);
-        snprintf(outfilename, strlen(truncated_infilename) + strlen(".types") + 1, "%s.types", truncated_infilename);
+        char *outfilename = malloc(strlen(truncated_infilename) + strlen(".j") + 1);
+        snprintf(outfilename, strlen(truncated_infilename) + strlen(".j") + 1, "%s.j", truncated_infilename);
 
         lexer L;
         init_lexer(&L, infilename, outfilename);
-        FILE *output = fopen(outfilename, "w");
-
-    
-        
-        // Initialize symbol tables
-        init_symbol_tables();
-        
-        // Parse the program 
         int stmtCount = 0;
         Statement **program = parse_program(&L, &stmtCount);
-        
-        
-        fclose(output);
-        printf("Completed code generation. Check %s for details\n", outfilename);
-        free(outfilename);
+        if (!program) {
+            fprintf(stderr, "Parsing failed for %s\n", infilename);
+            exit(1);
+        } else {
+            
+            generate_code(program, stmtCount, infilename, outfilename);
+            printf("Completed code generation. Check %s for details\n", outfilename);
+        }
     }
 
 

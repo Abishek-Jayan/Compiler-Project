@@ -89,6 +89,16 @@ typedef struct Declaration {
     Expression *init;    // initializer expression (may be NULL)
 } Declaration;
 
+//Variable Symbol definition
+typedef struct VarSymbol
+{
+    char name[64];
+    Type type;
+    bool isGlobal;
+    int localIndex;
+    struct VarSymbol *next;
+} VarSymbol;
+
 
 // Function prototype / definition
 typedef struct Function {
@@ -99,6 +109,7 @@ typedef struct Function {
     struct Statement *body;      
     bool defined;         // true if function defined, false if only prototype
     struct Function *next;
+    int stackLimit;
 } Function;
 
 // Statement node 
@@ -134,6 +145,12 @@ typedef struct LookaheadBuffer {
     int count; // Number of tokens in buffer
 } LookaheadBuffer;
 
+// Symbol table declarations
+extern VarSymbol *varSymbols;
+extern Function *funcSymbols;
+extern StructDef *structSymbols;
+
+
 
 // Parser Function Prototypes 
 Statement *parser_statement(lexer *L, LookaheadBuffer *buf, bool isGlobal, bool isConst);
@@ -158,6 +175,8 @@ Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf);
 Statement *parse_struct(lexer *L, LookaheadBuffer *buf);
 Statement **parse_program(lexer *L, int *stmtCount);
 
+VarSymbol *lookup_variable(const char *name);
+Function *lookup_function(const char *name);
 
 // Utility initialization routines 
 void init_symbol_tables();

@@ -12,6 +12,11 @@ typedef struct StructTable {
     char* value;
 } StructTable;
 
+
+// Symbol table definitions
+VarSymbol *varSymbols = NULL;    // Global variable symbol table
+Function *funcSymbols = NULL;    // Global function symbol table
+StructDef *structSymbols = NULL; // Global struct symbol table
 StructTable* struct_table = NULL;
 int size = 0;
 int capacity = 0;
@@ -76,22 +81,9 @@ void clear_lookahead(LookaheadBuffer *buf)
     buf->count = 0;
 }
 
-/* Variable symbol */
-typedef struct VarSymbol
-{
-    char name[64];
-    Type type;
-    bool isGlobal;
-    struct VarSymbol *next;
-} VarSymbol;
 
-VarSymbol *varSymbols = NULL;
 
-/* Function symbol */
-Function *funcSymbols = NULL;
 
-/* Struct symbol */
-StructDef *structSymbols = NULL;
 
 void *my_malloc(size_t bytes)
 {
@@ -195,6 +187,7 @@ void add_variable(const char *name, Type type, bool isGlobal)
     strncpy(vs->name, name, sizeof(vs->name) - 1);
     vs->type = type;
     vs->isGlobal = isGlobal;
+    vs->localIndex = -1;
     vs->next = varSymbols;
     varSymbols = vs;
 }
@@ -207,6 +200,29 @@ void add_struct(const char *name, bool isGlobal)
     structSymbols = struc;
 }
 
+void add_function(const char *name, Type returnType, int numParams, Declaration **params, bool defined)
+{
+    Function *f = my_malloc(sizeof(Function));
+    strncpy(f->name, name, sizeof(f->name) - 1);
+    f->name[sizeof(f->name) - 1] = '\0';
+    f->returnType = returnType;
+    f->numParams = numParams;
+    Declaration **new_params = NULL;
+    if (numParams > 0) {
+        new_params = my_malloc(numParams * sizeof(Declaration *));
+        for (int i = 0; i < numParams; i++) {
+            new_params[i] = my_malloc(sizeof(Declaration));
+            *new_params[i] = *params[i]; // Copy Declaration struct
+        }
+    }
+    f->params = new_params;
+    f->body = NULL;
+    f->defined = defined;
+    f->stackLimit = 0;
+    f->next = funcSymbols;
+    funcSymbols = f;
+    
+}
 
 VarSymbol *lookup_variable(const char *name)
 {
@@ -242,13 +258,7 @@ StructDef *lookup_struct(const char *name)
     return NULL;
 }
 
-// Initialize symbol tables
-void init_symbol_tables()
-{
-    varSymbols = NULL;
-    funcSymbols = NULL;
-    structSymbols = NULL;
-}
+
 
 // Create a literal node (integer, float, char, string)
 Expression *make_literal(const char *value, Type type, int lineno)
@@ -470,7 +480,7 @@ Expression *make_call(Expression *funcExpr, Expression **args, int numArgs, int 
                 char msg[256];
                 snprintf(msg, sizeof(msg), "In call to %s: Parameter #%d should be %s, was %s",
                          func->name, i + 1, paramType, argType);
-                type_error("fcall7.c", lineno, msg);
+                type_error(inputfilename, lineno, msg);
             }
             widen_expression(args[i], &func->params[i]->declType);
         }
@@ -1495,6 +1505,7 @@ Statement *parse_struct(lexer *L, LookaheadBuffer *buf)
 Statement **parse_program(lexer *L, int *stmtCount)
 {
     inputfilename = L->filename;
+    init_symbol_tables();
     Statement **stmts = my_malloc(200 * sizeof(Statement *));
     int count = 0;
     LookaheadBuffer buf;
@@ -1852,4 +1863,53 @@ void type_check_statement(Statement *stmt, const char *filename, FILE *output)
             type_check_statement(stmt->stmts[i], filename, output);
         break;
     }
+}
+
+void init_symbol_tables(){
+    // Predeclare lib440 functions
+    Type voidType = {BASE_VOID, false, false, ""};
+    Type intType = {BASE_INT, false, false, ""};
+    Type floatType = {BASE_FLOAT, false, false, ""};
+    Type charArrayType = {BASE_CHAR, false, true, ""};
+
+    // putint(int) -> void
+    Declaration *putint_param = my_malloc(sizeof(Declaration));
+    strncpy(putint_param->name, "x", sizeof(putint_param->name) - 1);
+    putint_param->declType = intType;
+    putint_param->initialized = false;
+    putint_param->init = NULL;
+    add_function("putint", voidType, 1, &putint_param, false);
+
+    // putchar(int) -> void
+    Declaration *putchar_param = my_malloc(sizeof(Declaration));
+    strncpy(putchar_param->name, "x", sizeof(putchar_param->name) - 1);
+    putchar_param->declType = intType;
+    putchar_param->initialized = false;
+    putchar_param->init = NULL;
+    add_function("putchar", voidType, 1, &putchar_param, false);
+
+    // putfloat(float) -> void
+    Declaration *putfloat_param = my_malloc(sizeof(Declaration));
+    strncpy(putfloat_param->name, "x", sizeof(putfloat_param->name) - 1);
+    putfloat_param->declType = floatType;
+    putfloat_param->initialized = false;
+    putfloat_param->init = NULL;
+    add_function("putfloat", voidType, 1, &putfloat_param, false);
+
+    // getint() -> int
+    add_function("getint", intType, 0, NULL, false);
+
+    // getchar() -> int
+    add_function("getchar", intType, 0, NULL, false);
+
+    // getfloat() -> float
+    add_function("getfloat", floatType, 0, NULL, false);
+
+    // putstring(char[]) -> void
+    Declaration *putstring_param = my_malloc(sizeof(Declaration));
+    strncpy(putstring_param->name, "s", sizeof(putstring_param->name) - 1);
+    putstring_param->declType = charArrayType;
+    putstring_param->initialized = false;
+    putstring_param->init = NULL;
+    add_function("putstring", voidType, 1, &putstring_param, false);
 }

@@ -2,10 +2,10 @@ CC = gcc
 CFLAGS = -Wall -Wextra -pedantic
 TARGET = mycc
 
-SRCS = main.c lexer.c parser.c parser_ast.c
+SRCS = main.c lexer.c parser.c parser_ast.c codegen.c
 
 OBJS = $(SRCS:.c=.o)
-OUTPUT = *.parser *.lexer *.types
+OUTPUT = *.parser *.lexer *.types *.j
 
 all: $(TARGET)
 
