@@ -10,13 +10,13 @@ typedef enum {
     BASE_CHAR,
     BASE_INT,
     BASE_FLOAT,
-    BASE_STRUCT  // For user–defined structs
+    BASE_STRUCT
 } BaseType;
 
 typedef struct Type {
     BaseType base;
-    bool isConst;            // true if declared const
-    bool isArray;            // true if the variable is an array
+    bool isConst;            
+    bool isArray;            
     char structName[64];     // valid only if base==BASE_STRUCT
 } Type;
 

@@ -14,9 +14,9 @@ typedef struct StructTable {
 
 
 // Symbol table definitions
-VarSymbol *varSymbols = NULL;    // Global variable symbol table
-Function *funcSymbols = NULL;    // Global function symbol table
-StructDef *structSymbols = NULL; // Global struct symbol table
+VarSymbol *varSymbols = NULL;
+Function *funcSymbols = NULL;
+StructDef *structSymbols = NULL; 
 StructTable* struct_table = NULL;
 int size = 0;
 int capacity = 0;
@@ -185,6 +185,7 @@ void add_variable(const char *name, Type type, bool isGlobal)
 {
     VarSymbol *vs = my_malloc(sizeof(VarSymbol));
     strncpy(vs->name, name, sizeof(vs->name) - 1);
+    vs->name[sizeof(vs->name) - 1] = '\0';
     vs->type = type;
     vs->isGlobal = isGlobal;
     vs->localIndex = -1;
@@ -403,7 +404,7 @@ Expression *make_assignment(Expression *lvalue, Expression *rvalue, int lineno, 
         type_error(inputfilename, lineno, "Assignment to a const variable");
     if (lvalue->exprType.isArray)
         type_error(inputfilename, lineno, "Cannot assign to an array type");
-    /* Check type compatibility (allow automatic widening) */
+    // Check type compatibility (allow automatic widening)
     if (!equal_types(&lvalue->exprType, &rvalue->exprType))
     {
         if (can_widen(&rvalue->exprType, &lvalue->exprType))
@@ -413,17 +414,6 @@ Expression *make_assignment(Expression *lvalue, Expression *rvalue, int lineno, 
         else
         {
             type_error(inputfilename, lineno, "Type mismatch in assignment");
-        }
-    }
-    // Additional checks for compound assignments
-    if (op != OP_ASSIGN)
-    {
-        // Ensure lvalue and rvalue are numeric types (int, float, char)
-        if (lvalue->exprType.base != BASE_INT &&
-            lvalue->exprType.base != BASE_FLOAT &&
-            lvalue->exprType.base != BASE_CHAR)
-        {
-            type_error("input.c", lineno, "Compound assignment requires numeric type");
         }
     }
     node->exprType = lvalue->exprType;
@@ -559,6 +549,8 @@ Expression *parse_assignment(lexer *L)
         L->current.ID == TOKEN_DIV_ASSIGN)
     {
         Operator op;
+        Operator bin_op = OP_ASSIGN;
+        bool is_compound = false;
         switch (L->current.ID)
         {
         case TOKEN_EQUAL:
@@ -566,22 +558,40 @@ Expression *parse_assignment(lexer *L)
             break;
         case TOKEN_ADD_ASSIGN:
             op = OP_PLUS_ASSIGN;
+            bin_op = OP_PLUS;
+            is_compound = true;
             break;
         case TOKEN_SUB_ASSIGN:
             op = OP_MINUS_ASSIGN;
+            bin_op = OP_MINUS;
+            is_compound = true;
             break;
         case TOKEN_MUL_ASSIGN:
             op = OP_MUL_ASSIGN;
+            bin_op = OP_MUL;
+            is_compound = true;
             break;
         case TOKEN_DIV_ASSIGN:
             op = OP_DIV_ASSIGN;
+            bin_op = OP_DIV;
+            is_compound = true;
             break;
         default:
             syntax_error(L, "assignment operator");
         }
         getNextToken(L);
         Expression *right = parse_assignment(L);
-        left = make_assignment(left, right, L->lineno, op);
+        if(is_compound) {
+            Expression *left_copy = my_malloc(sizeof(Expression));
+            *left_copy = *left;
+            left_copy->left = left_copy->right = NULL;
+            Expression *bin_exp = make_binary(left_copy,bin_op, right, L->lineno);
+            left = make_assignment(left,bin_exp, L->lineno, OP_ASSIGN);
+        }
+        else {
+            left = make_assignment(left, right, L->lineno, op);
+
+        }
     }
     return left;
 }
@@ -706,7 +716,7 @@ Expression *parse_relational(lexer *L)
     return node;
 }
 
-// Parse additive: left + right or left - right
+// Parse addition: left + right or left - right
 Expression *parse_additive(lexer *L)
 {
     Expression *node = parse_multiplicative(L);
@@ -721,7 +731,7 @@ Expression *parse_additive(lexer *L)
     return node;
 }
 
-// Parse multiplicative: left * right or left / right or left % right
+// Parse multiplication: left * right or left / right or left % right
 Expression *parse_multiplicative(lexer *L)
 {
     Expression *node = parse_unary(L);
@@ -742,7 +752,6 @@ Expression *parse_multiplicative(lexer *L)
     return node;
 }
 
-// Parse unary: '-' | '!' | cast | primary
 Expression *parse_unary(lexer *L)
 {
     if (L->current.ID == TOKEN_MINUS)
@@ -828,7 +837,6 @@ Expression *parse_unary(lexer *L)
     return parse_primary(L);
 }
 
-// Parse primary expressions: literals, identifiers, parenthesized expr, array indexing, function calls, and member selection.
 Expression *parse_primary(lexer *L)
 {
 
@@ -999,9 +1007,7 @@ Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal, boo
     }
     decl->declType = type;
 
-    // Add declaration to symbol table
     add_variable(decl->name, type, isGlobal);
-    // Optional initialization
     if (L->current.ID == TOKEN_EQUAL)
     {
         getNextToken(L); // consume '='
@@ -1034,7 +1040,6 @@ Statement *parser_statement(lexer *L, LookaheadBuffer *buf, bool isGlobal, bool 
 
     if (buf && buf->count > 0)
     {
-        // Check if this is a declaration
         token t = buf->tokens[0];
         if (t.ID == TOKEN_TYPE || t.ID == TOKEN_STRUCT)
         {
@@ -1044,13 +1049,12 @@ Statement *parser_statement(lexer *L, LookaheadBuffer *buf, bool isGlobal, bool 
             return stmt;
         }
     }
-    // Handle return statement
     if (L->current.ID == TOKEN_RETURN)
     {
         stmt = my_malloc(sizeof(Statement));
         stmt->kind = STMT_RETURN;
         stmt->lineno = L->lineno;
-        getNextToken(L); // consume 'return'
+        getNextToken(L);
         Expression *retExpr = NULL;
         if (L->current.ID != TOKEN_SEMICOLON)
         {
@@ -1063,13 +1067,11 @@ Statement *parser_statement(lexer *L, LookaheadBuffer *buf, bool isGlobal, bool 
         return stmt;
     }
 
-    // Handle compound statement
     if (L->current.ID == TOKEN_LBRACE)
     {
-        return parse_compound(L); // parse_compound uses lexer directly
+        return parse_compound(L);
     }
 
-    // Otherwise, parse as an expression statement
     stmt = my_malloc(sizeof(Statement));
     stmt->kind = STMT_EXPR;
     stmt->lineno = L->lineno;
@@ -1077,7 +1079,6 @@ Statement *parser_statement(lexer *L, LookaheadBuffer *buf, bool isGlobal, bool 
     return stmt;
 }
 
-// Parse a compound statement: '{' { statement } '}'
 Statement *parse_compound(lexer *L)
 {
     if (L->current.ID != TOKEN_LBRACE)
@@ -1129,7 +1130,7 @@ Statement *parse_compound(lexer *L)
         }
         if (L->current.ID == TOKEN_IDENTIFIER)
         {
-            stmts[count++] = parser_statement(L, NULL, true, isConst);
+            stmts[count++] = parser_statement(L, NULL, false, isConst);
         }
         else if(isStruct && buf.tokens[0].ID == TOKEN_IDENTIFIER && L->current.ID==TOKEN_LBRACE)
         {
@@ -1312,7 +1313,6 @@ Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf)
         syntax_error(L, "')'");
     getNextToken(L);
 
-    // Check for existing function declaration
     Function *existing = lookup_function(funcName);
     if (existing)
     {
@@ -1349,7 +1349,6 @@ Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf)
                 type_error(L->filename, funcNameLine, msg);
             }
         }
-        // If defined, ensure not redefining
         if (existing->defined)
         {
             char msg[256];
@@ -1359,7 +1358,6 @@ Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf)
         }
     }
 
-    // Create or update function symbol
     Function *func = my_malloc(sizeof(Function));
     strncpy(func->name, funcName, sizeof(func->name) - 1);
     func->returnType = retType;
@@ -1521,7 +1519,7 @@ Statement **parse_program(lexer *L, int *stmtCount)
             isConst = true;
             getNextToken(L);
         }
-        push_token(&buf, L->current); // Store first token (e.g., "int", "struct")
+        push_token(&buf, L->current); // Store first token eg: int, struct
         if (buf.count > 0 && (buf.tokens[0].ID == TOKEN_TYPE ||
                               (buf.tokens[0].ID == TOKEN_STRUCT)))
         {
@@ -1568,7 +1566,7 @@ Statement **parse_program(lexer *L, int *stmtCount)
                                 buf.tokens[1] = L->current;
                             }
                         }
-                        stmts[count++] = parser_statement(L, &buf, false, isConst);
+                        stmts[count++] = parser_statement(L, &buf, true, isConst);
 
                     } while (L->current.ID == TOKEN_COMMA);
 

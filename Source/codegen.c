@@ -17,7 +17,7 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt);
 static void emit_expression(CodegenContext *ctx, Expression *expr);
 static const char *get_jvm_type(Type *type);
 
-// Helper to emit indented assembly code
+
 static void emit(CodegenContext *ctx, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -27,18 +27,18 @@ static void emit(CodegenContext *ctx, const char *fmt, ...) {
     va_end(args);
 }
 
-// Convert C type to JVM type descriptor
+
 static const char *get_jvm_type(Type *type) {
     if (type->isArray) {
         if (type->base == BASE_CHAR) return "[C";
-        return "[I"; // Default to int array for simplicity
+        return "[I";
     }
     switch (type->base) {
         case BASE_INT: return "I";
         case BASE_CHAR: return "C";
         case BASE_FLOAT: return "F";
         case BASE_VOID: return "V";
-        case BASE_STRUCT: return "Ljava/lang/Object;"; // Simplified for now
+        case BASE_STRUCT: return "Ljava/lang/Object;"; 
         default: return "V";
     }
 }
@@ -51,7 +51,6 @@ void generate_code(Statement **stmts, int stmtCount, const char *filename, const
     ctx.stacksize = 0;
     ctx.maxstacksize = 0;
 
-    // Open the output file
     ctx.output = fopen(outfilename, "w");
     if (!ctx.output) {
         fprintf(stderr, "Error: Cannot open output file %s\n", outfilename);
@@ -65,12 +64,10 @@ void generate_code(Statement **stmts, int stmtCount, const char *filename, const
     emit_init_method(&ctx);
     emit_clinit_method(&ctx);
 
-    // Close the output file
     fclose(ctx.output);
 }
 
 static void emit_class_header(CodegenContext *ctx) {
-    // Extract class name from filename (remove .c extension)
     char class_name[256];
     snprintf(class_name, sizeof(class_name), "%.*s", (int)(strlen(ctx->filename) - 2), ctx->filename);
     fprintf(ctx->output, ".class public %s\n", class_name);
@@ -118,7 +115,6 @@ static void emit_init_method(CodegenContext *ctx) {
 }
 
 static void emit_clinit_method(CodegenContext *ctx) {
-    // Only emit <clinit> if there are initialized globals or arrays
     bool needed = false;
     VarSymbol *var = varSymbols;
     while (var) {
@@ -132,7 +128,6 @@ static void emit_clinit_method(CodegenContext *ctx) {
 
     fprintf(ctx->output, ".method <clinit> : ()V\n");
     emit(ctx, ".code stack 2 locals 0");
-    // TODO: Emit initialization code for global variables and arrays
     emit(ctx, "return");
     emit(ctx, ".end code");
     fprintf(ctx->output, ".end method\n\n");
@@ -144,13 +139,11 @@ static void emit_function(CodegenContext *ctx, Function *func) {
     ctx->stacksize = 0;
     ctx->maxstacksize = 0;
 
-    // Assign local indices to parameters
     for (int i = 0; i < func->numParams; i++) {
         VarSymbol *vs = lookup_variable(func->params[i]->name);
         if (vs) vs->localIndex = i;
     }
 
-    // Assign local indices to local variables
     VarSymbol *vs = varSymbols;
     while (vs) {
         if (!vs->isGlobal && vs->localIndex == -1) {
@@ -159,7 +152,6 @@ static void emit_function(CodegenContext *ctx, Function *func) {
         vs = vs->next;
     }
 
-    // Build method signature
     char signature[256] = "(";
     for (int i = 0; i < func->numParams; i++) {
         strcat(signature, get_jvm_type(&func->params[i]->declType));
@@ -170,10 +162,8 @@ static void emit_function(CodegenContext *ctx, Function *func) {
     fprintf(ctx->output, ".method public static %s : %s\n", func->name, signature);
     emit(ctx, ".code stack %d locals %d", func->stackLimit ? func->stackLimit : 2, ctx->localcount);
 
-    // Emit function body
     emit_statement(ctx, func->body);
 
-    // Add implicit return for void functions
     if (func->returnType.base == BASE_VOID) {
         emit(ctx, "return");
     }
@@ -208,14 +198,12 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt) {
             if (stmt->u.expr) {
                 emit(ctx, "; expression statement at %s line %d", ctx->filename, stmt->lineno);
                 emit_expression(ctx, stmt->u.expr);
-                // Pop result if not void
                 if (stmt->u.expr->exprType.base != BASE_VOID) {
                     emit(ctx, "pop");
                 }
             }
             break;
         case STMT_RETURN:
-            // Handled above
             break;
         case STMT_COMPOUND:
             for (int i = 0; i < stmt->numStmts; i++) {
@@ -223,7 +211,6 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt) {
             }
             break;
         case STMT_DECL:
-            // Declarations are handled by localcount; initialization is an expression
             if (stmt->u.decl.initialized && stmt->u.decl.init) {
                 emit(ctx, "; declaration initialization at %s line %d", ctx->filename, stmt->lineno);
                 emit_expression(ctx, stmt->u.decl.init);
@@ -322,6 +309,7 @@ static void emit_expression(CodegenContext *ctx, Expression *expr) {
                         ctx->filename, expr->lineno, expr->left->value);
                 exit(1);
             }
+            emit(ctx,"dup");
             if (vs->isGlobal) {
                 emit(ctx, "putstatic Field %.*s %s %s",
                      (int)(strlen(ctx->filename) - 2), ctx->filename,
@@ -331,7 +319,6 @@ static void emit_expression(CodegenContext *ctx, Expression *expr) {
                      vs->type.base == BASE_FLOAT ? "f" : "i",
                      vs->localIndex, vs->name);
             }
-            // Smart stack management: Do not reload unless needed
             break;
         case EXPR_CALL:
             {
