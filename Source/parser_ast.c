@@ -1236,7 +1236,7 @@ Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf)
         syntax_error(L, "function name");
     char funcName[64];
     strncpy(funcName, t.attrb, sizeof(funcName) - 1);
-    int funcNameLine = L->lineno; // Line number for error reporting
+    int funcNameLine = L->lineno;
     if (buf_pos <= buf->count)
         getNextToken(L);
 
@@ -1557,7 +1557,8 @@ Statement **parse_program(lexer *L, int *stmtCount)
                         if (L->current.ID != TOKEN_LBRACKET && L->current.ID != TOKEN_SEMICOLON)
                         {
 
-                            getNextToken(L);
+                            if (((buf.tokens[0].ID == TOKEN_TYPE || buf.tokens[0].ID == TOKEN_STRUCT) && buf.tokens[1].ID == TOKEN_IDENTIFIER))
+                                stmts[count++] = parser_statement(L, &buf, true, isConst);
                             if (L->current.ID == TOKEN_IDENTIFIER)
                             {
 

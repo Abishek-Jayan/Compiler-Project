@@ -527,7 +527,11 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
         break;
     case EXPR_CAST:
         emit_expression(ctx, expr->left);
-        if (!(expr->exprType.base == BASE_INT && expr->left->exprType.base == BASE_CHAR))
+        if (expr->exprType.base == BASE_FLOAT && expr->left->exprType.base == BASE_INT)
+        {
+        emit(ctx, "i2f ; cast int to float");
+        }
+        else if (!(expr->exprType.base == BASE_INT && expr->left->exprType.base == BASE_CHAR))
         {
             fprintf(stderr, "Code generation error in file %s line %d: Unsupported cast type\n",
                     ctx->filename, expr->lineno);
