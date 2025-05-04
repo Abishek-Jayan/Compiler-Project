@@ -1877,13 +1877,13 @@ void init_symbol_tables()
     putint_param->init = NULL;
     add_function("putint", voidType, 1, &putint_param, false);
 
-    // putchar(int) -> void
+    // putchar(int) -> int
     Declaration *putchar_param = my_malloc(sizeof(Declaration));
     strncpy(putchar_param->name, "x", sizeof(putchar_param->name) - 1);
     putchar_param->declType = intType;
     putchar_param->initialized = false;
     putchar_param->init = NULL;
-    add_function("putchar", voidType, 1, &putchar_param, false);
+    add_function("putchar", intType, 1, &putchar_param, false);
 
     // putfloat(float) -> void
     Declaration *putfloat_param = my_malloc(sizeof(Declaration));

@@ -415,7 +415,7 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
                         ctx->filename, expr->lineno);
                 exit(1);
             }
-            emit_expression(ctx, expr->left); // Reload array[index]
+            emit_expression(ctx, expr->left);
         }
         else
         {
@@ -429,6 +429,9 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
             }
             if (vs->isGlobal)
             {
+                if (expr->right->kind == EXPR_BINARY) {
+                    emit(ctx, "dup");
+                }
                 emit(ctx, "putstatic Field %.*s %s %s",
                      (int)(strlen(ctx->filename) - 2), ctx->filename,
                      vs->name, get_jvm_type(&vs->type));
