@@ -6,26 +6,28 @@
 #include <string.h>
 #include <ctype.h>
 
-
-typedef struct StructTable {
-    char* key;
-    char* value;
+typedef struct StructTable
+{
+    char *key;
+    char *value;
 } StructTable;
-
 
 // Symbol table definitions
 VarSymbol *varSymbols = NULL;
 Function *funcSymbols = NULL;
-StructDef *structSymbols = NULL; 
-StructTable* struct_table = NULL;
+StructDef *structSymbols = NULL;
+StructTable *struct_table = NULL;
 int size = 0;
 int capacity = 0;
 
-void append(StructTable** table, int* size, int* capacity, const char* key, const char* value) {
-    if (*size >= *capacity) {
+void append(StructTable **table, int *size, int *capacity, const char *key, const char *value)
+{
+    if (*size >= *capacity)
+    {
         *capacity = (*capacity == 0) ? 1 : *capacity * 2;
-        StructTable* temp = realloc(*table, *capacity * sizeof(StructTable));
-        if (temp == NULL) {
+        StructTable *temp = realloc(*table, *capacity * sizeof(StructTable));
+        if (temp == NULL)
+        {
             printf("Memory allocation failed!\n");
             exit(1);
         }
@@ -33,9 +35,10 @@ void append(StructTable** table, int* size, int* capacity, const char* key, cons
     }
 
     // Allocate memory for key and value
-    (*table)[*size].key = strdup(key);   // Copy key
+    (*table)[*size].key = strdup(key);     // Copy key
     (*table)[*size].value = strdup(value); // Copy value
-    if ((*table)[*size].key == NULL || (*table)[*size].value == NULL) {
+    if ((*table)[*size].key == NULL || (*table)[*size].value == NULL)
+    {
         printf("String duplication failed!\n");
         exit(1);
     }
@@ -43,15 +46,17 @@ void append(StructTable** table, int* size, int* capacity, const char* key, cons
     (*size)++;
 }
 
-char* lookup(StructTable* table, int size, const char* key) {
-    for (int i = 0; i < size; i++) {
-        if (strcmp(table[i].key, key) == 0) {
+char *lookup(StructTable *table, int size, const char *key)
+{
+    for (int i = 0; i < size; i++)
+    {
+        if (strcmp(table[i].key, key) == 0)
+        {
             return table[i].value;
         }
     }
     return NULL; // Key not found
 }
-
 
 char *inputfilename;
 
@@ -80,10 +85,6 @@ void clear_lookahead(LookaheadBuffer *buf)
 {
     buf->count = 0;
 }
-
-
-
-
 
 void *my_malloc(size_t bytes)
 {
@@ -209,9 +210,11 @@ void add_function(const char *name, Type returnType, int numParams, Declaration 
     f->returnType = returnType;
     f->numParams = numParams;
     Declaration **new_params = NULL;
-    if (numParams > 0) {
+    if (numParams > 0)
+    {
         new_params = my_malloc(numParams * sizeof(Declaration *));
-        for (int i = 0; i < numParams; i++) {
+        for (int i = 0; i < numParams; i++)
+        {
             new_params[i] = my_malloc(sizeof(Declaration));
             *new_params[i] = *params[i]; // Copy Declaration struct
         }
@@ -222,7 +225,6 @@ void add_function(const char *name, Type returnType, int numParams, Declaration 
     f->stackLimit = 0;
     f->next = funcSymbols;
     funcSymbols = f;
-    
 }
 
 VarSymbol *lookup_variable(const char *name)
@@ -258,8 +260,6 @@ StructDef *lookup_struct(const char *name)
     }
     return NULL;
 }
-
-
 
 // Create a literal node (integer, float, char, string)
 Expression *make_literal(const char *value, Type type, int lineno)
@@ -516,7 +516,7 @@ Expression *make_member(Expression *structExpr, const char *member, int lineno)
     bool found = false;
     while (sdef)
     {
-        if (strcmp(sdef->name, lookup(struct_table,size, structExpr->exprType.structName)) == 0)
+        if (strcmp(sdef->name, lookup(struct_table, size, structExpr->exprType.structName)) == 0)
         {
             // Search for member in sdef
             for (int i = 0; i < sdef->numMembers; i++)
@@ -581,16 +581,17 @@ Expression *parse_assignment(lexer *L)
         }
         getNextToken(L);
         Expression *right = parse_assignment(L);
-        if(is_compound) {
+        if (is_compound)
+        {
             Expression *left_copy = my_malloc(sizeof(Expression));
             *left_copy = *left;
             left_copy->left = left_copy->right = NULL;
-            Expression *bin_exp = make_binary(left_copy,bin_op, right, L->lineno);
-            left = make_assignment(left,bin_exp, L->lineno, OP_ASSIGN);
+            Expression *bin_exp = make_binary(left_copy, bin_op, right, L->lineno);
+            left = make_assignment(left, bin_exp, L->lineno, OP_ASSIGN);
         }
-        else {
+        else
+        {
             left = make_assignment(left, right, L->lineno, op);
-
         }
     }
     return left;
@@ -961,7 +962,7 @@ Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal, boo
         {
             type_error(L->filename, L->lineno, "Variable cannot be declared void");
         }
-        
+
         else
         {
             syntax_error(L, "type specifier");
@@ -974,10 +975,9 @@ Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal, boo
         if (t.ID != TOKEN_IDENTIFIER)
             syntax_error(L, "struct name");
         if (!lookup_struct(buf->tokens[0].attrb))
-            syntax_error(L,"unknown struct");
+            syntax_error(L, "unknown struct");
         strncpy(type.structName, t.attrb, sizeof(type.structName) - 1);
         strncpy(decl->name, t.attrb, sizeof(decl->name) - 1);
-
     }
 
     else
@@ -989,9 +989,9 @@ Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal, boo
     t = (buf_pos < buf->count) ? buf->tokens[buf_pos++] : L->current;
     if (type.base != BASE_STRUCT)
     {
-    if (t.ID != TOKEN_IDENTIFIER)
-        syntax_error(L, "variable name");
-    strncpy(decl->name, t.attrb, sizeof(decl->name) - 1);
+        if (t.ID != TOKEN_IDENTIFIER)
+            syntax_error(L, "variable name");
+        strncpy(decl->name, t.attrb, sizeof(decl->name) - 1);
     }
     // Check for array declaration
     if (L->current.ID == TOKEN_LBRACKET)
@@ -1075,6 +1075,9 @@ Statement *parser_statement(lexer *L, LookaheadBuffer *buf, bool isGlobal, bool 
     stmt = my_malloc(sizeof(Statement));
     stmt->kind = STMT_EXPR;
     stmt->lineno = L->lineno;
+    stmt->u.expr = NULL;
+    if (L->current.ID == TOKEN_RBRACE)
+        return stmt;
     stmt->u.expr = parse_assignment(L);
     return stmt;
 }
@@ -1105,12 +1108,11 @@ Statement *parse_compound(lexer *L)
         }
         if (L->current.ID == TOKEN_TYPE || L->current.ID == TOKEN_STRUCT)
         {
-            if(L->current.ID == TOKEN_STRUCT)
+            if (L->current.ID == TOKEN_STRUCT)
             {
                 isStruct = true;
                 save_struct = L->current;
                 getNextToken(L);
-
             }
 
             push_token(&buf, L->current);
@@ -1132,49 +1134,46 @@ Statement *parse_compound(lexer *L)
         {
             stmts[count++] = parser_statement(L, NULL, false, isConst);
         }
-        else if(isStruct && buf.tokens[0].ID == TOKEN_IDENTIFIER && L->current.ID==TOKEN_LBRACE)
+        else if (isStruct && buf.tokens[0].ID == TOKEN_IDENTIFIER && L->current.ID == TOKEN_LBRACE)
         {
-            push_token(&buf,buf.tokens[0]);
-            push_token(&buf,L->current);
-            buf.tokens[0]=save_struct;
+            push_token(&buf, buf.tokens[0]);
+            push_token(&buf, L->current);
+            buf.tokens[0] = save_struct;
             stmts[count++] = parse_struct(L, &buf);
             parsingStruct = true;
-
         }
         else
         {
             do
             {
-                if(isStruct)
+                if (isStruct)
                 {
                     buf.tokens[0].ID = TOKEN_STRUCT;
-                    append(&struct_table, &size, &capacity, buf.tokens[1].attrb, buf.tokens[0].attrb);                
+                    append(&struct_table, &size, &capacity, buf.tokens[1].attrb, buf.tokens[0].attrb);
                 }
-                
+
                 if (L->current.ID != TOKEN_LBRACKET && L->current.ID != TOKEN_SEMICOLON)
                 {
-                    if ((buf.tokens[0].ID == TOKEN_TYPE || buf.tokens[0].ID == TOKEN_STRUCT) && buf.tokens[1].ID == TOKEN_IDENTIFIER)
+
+                    if (((buf.tokens[0].ID == TOKEN_TYPE || buf.tokens[0].ID == TOKEN_STRUCT) && buf.tokens[1].ID == TOKEN_IDENTIFIER))
                         stmts[count++] = parser_statement(L, &buf, false, isConst);
                     if (L->current.ID == TOKEN_IDENTIFIER)
                         buf.tokens[1] = L->current;
                 }
-                
                 stmts[count++] = parser_statement(L, &buf, false, isConst);
-
+                
             } while (L->current.ID == TOKEN_COMMA);
         }
-        if (!parsingStruct && L->current.ID != TOKEN_SEMICOLON && L->current.ID != TOKEN_RBRACE)
+        if ((!parsingStruct && (stmts[count - 1]->kind == STMT_DECL || stmts[count - 1]->kind == STMT_EXPR)) && L->current.ID != TOKEN_RBRACE)
         {
-            syntax_error(L, "';'");
-        }
-
-        if (!parsingStruct && L->current.ID == TOKEN_SEMICOLON)
+            if (L->current.ID != TOKEN_SEMICOLON)
+                syntax_error(L, "';'");
             getNextToken(L);
-        
+        }
     }
     if (L->current.ID != TOKEN_RBRACE)
         syntax_error(L, "'}'");
-    getNextToken(L); // consume '}'
+    getNextToken(L);
     Statement *compound = my_malloc(sizeof(Statement));
     compound->kind = STMT_COMPOUND;
     compound->lineno = L->lineno;
@@ -1450,31 +1449,30 @@ Statement *parse_struct(lexer *L, LookaheadBuffer *buf)
         getNextToken(L);
         do
         {
-            
-                if (L->current.ID != TOKEN_LBRACKET)
+
+            if (L->current.ID != TOKEN_LBRACKET)
+            {
+                if (L->current.ID == TOKEN_IDENTIFIER)
                 {
-                    if (L->current.ID == TOKEN_IDENTIFIER)
-                    {
-                        member_buf.tokens[1] = L->current;
-                        getNextToken(L);
-                    }
-                    if (member_buf.tokens[0].ID == TOKEN_TYPE && member_buf.tokens[1].ID == TOKEN_IDENTIFIER)
-                        {Statement *memberStmt = parser_declaration(L, &member_buf, true, isConst);
-                            sdef->members[sdef->numMembers] = my_malloc(sizeof(Declaration));
-                            *(sdef->members[sdef->numMembers]) = memberStmt->u.decl;
-                            sdef->numMembers++;
-
-                            free(memberStmt);
-                        }
-                    
-
-                }
-                if (L->current.ID == TOKEN_COMMA)
+                    member_buf.tokens[1] = L->current;
                     getNextToken(L);
-                else
-                    break;
+                }
+                if (member_buf.tokens[0].ID == TOKEN_TYPE && member_buf.tokens[1].ID == TOKEN_IDENTIFIER)
+                {
+                    Statement *memberStmt = parser_declaration(L, &member_buf, true, isConst);
+                    sdef->members[sdef->numMembers] = my_malloc(sizeof(Declaration));
+                    *(sdef->members[sdef->numMembers]) = memberStmt->u.decl;
+                    sdef->numMembers++;
 
-            } while (1);
+                    free(memberStmt);
+                }
+            }
+            if (L->current.ID == TOKEN_COMMA)
+                getNextToken(L);
+            else
+                break;
+
+        } while (1);
 
         if (L->current.ID != TOKEN_SEMICOLON)
             syntax_error(L, "';' after struct member declaration");
@@ -1863,7 +1861,8 @@ void type_check_statement(Statement *stmt, const char *filename, FILE *output)
     }
 }
 
-void init_symbol_tables(){
+void init_symbol_tables()
+{
     // Predeclare lib440 functions
     Type voidType = {BASE_VOID, false, false, ""};
     Type intType = {BASE_INT, false, false, ""};
