@@ -22,19 +22,24 @@ Parser has been implemented. Run ```./mycc -2 input_filename``` to run the parse
 ## Phase 4
 Type Checker has been implemented. Run ```./mycc -3 input_filename``` to run the type checker.
 
+## Phase 5
+Code Generator has been implemented. Run ```./mycc -4 input_filename``` to run the type checker.
+
 
 ## Source Files
 1. main.c: Contains the main logic for the compiler. Handles command-line
 arguments and displays version information.
 2. Makefile: Contains the logic for building the executable.
-3. lexer.c: Contains the logic for the lexer (Phase 1)
+3. lexer.c: Contains the logic for the lexer (Phase 2)
 4. lexer.h: Header file for importing lexer function in main.c
-5. parser.c: Contains the logic for the parser (Phase 2)
+5. parser.c: Contains the logic for the parser (Phase 3)
 6. parser.h: Header file for importing parser function in main.c
 7. lexer.o ,main.o and parser.o: Files created by makefile for building mycc. Not git tracked so can be ignored.
-8. parser_ast.c: Contains the logic for the type checker (Phase 3)
-9.parser_ast.h: Header file for importing type checker function in main.c
+8. parser_ast.c: Contains the logic for the type checker (Phase 4)
+9. parser_ast.h: Header file for importing type checker function in main.c
+10. codegen.c: Contains the logic for the code generation (Phase 5)
+11. codegen.h: Header file for importing code generator in codegen.c
 
 
 ## High-Level Overview
-The compiler is currently in Phase 4. By providing an input file  we can have the typechecker typecheck the parsed instructions and get the appropriate output into an output file.
+The compiler is currently in Phase 45 By providing an input file  we can have the codegenerator generate the parsed code and get the appropriate output into an output file.

@@ -844,7 +844,7 @@ Expression *parse_primary(lexer *L)
     Expression *node = NULL;
     if (L->current.ID == TOKEN_LPAREN)
     {
-        getNextToken(L); // consume '('
+        getNextToken(L);
         node = parse_assignment(L);
         if (L->current.ID != TOKEN_RPAREN)
             syntax_error(L, "')'");
@@ -862,30 +862,26 @@ Expression *parse_primary(lexer *L)
     }
     else if (L->current.ID == TOKEN_IDENTIFIER)
     {
-        /* Parse an identifier. This might be a variable, function call, or struct member access */
         node = make_identifier(L->current.attrb, L->lineno);
         getNextToken(L);
 
-        /* Handle array indexing: identifier followed by '[' expression ']' */
         while (L->current.ID == TOKEN_LBRACKET)
         {
-            getNextToken(L); // consume '['
+            getNextToken(L); 
             Expression *indexExpr = parse_assignment(L);
             if (L->current.ID != TOKEN_RBRACKET)
                 syntax_error(L, "']'");
-            getNextToken(L); // consume ']'
+            getNextToken(L); 
             node = make_index(node, indexExpr, L->lineno);
         }
-        /* Handle function call: identifier followed by '(' ... ')' */
         if (L->current.ID == TOKEN_LPAREN)
         {
-            getNextToken(L); // consume '('
-            // Parse argument list (comma separated)
+            getNextToken(L); 
             int numArgs = 0;
             Expression **args = NULL;
             if (L->current.ID != TOKEN_RPAREN)
             {
-                args = my_malloc(10 * sizeof(Expression *)); // support up to 10 args for simplicity
+                args = my_malloc(10 * sizeof(Expression *)); 
                 while (1)
                 {
                     args[numArgs++] = parse_assignment(L);
@@ -901,13 +897,12 @@ Expression *parse_primary(lexer *L)
             }
             if (L->current.ID != TOKEN_RPAREN)
                 syntax_error(L, "')' after function call");
-            getNextToken(L); // consume ')'
+            getNextToken(L); 
             node = make_call(node, args, numArgs, L->lineno);
         }
-        // Handle member selection: identifier '.' identifier
         while (L->current.ID == TOKEN_DOT)
         {
-            getNextToken(L); // consume '.'
+            getNextToken(L); 
             if (L->current.ID != TOKEN_IDENTIFIER)
                 syntax_error(L, "member name after '.'");
             char member[64];

@@ -197,6 +197,7 @@ int main(int argc, char *argv[])
             generate_code(program, stmtCount, infilename, outfilename);
             printf("Completed code generation. Check %s for details\n", outfilename);
         }
+        free(outfilename);
     }
 
 

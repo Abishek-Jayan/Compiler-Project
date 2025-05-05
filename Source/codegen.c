@@ -7,10 +7,10 @@
 
 static void emit_class_header(CodegenContext *ctx);
 static void emit_global_variables(CodegenContext *ctx);
-static void emit_functions(CodegenContext *ctx, Statement **stmts, int stmtCount);
-static void emit_main_method(CodegenContext *ctx);
-static void emit_init_method(CodegenContext *ctx);
-static void emit_clinit_method(CodegenContext *ctx);
+static void emit_functions(CodegenContext *ctx, Statement **stmts, int stmtcount);
+static void emit_main(CodegenContext *ctx);
+static void emit_init(CodegenContext *ctx);
+static void emit_clinit(CodegenContext *ctx);
 static void emit_function(CodegenContext *ctx, Function *func);
 static void emit_statement(CodegenContext *ctx, Statement *stmt);
 static void emit_expression(CodegenContext *ctx, Expression *expr);
@@ -51,10 +51,10 @@ static const char *get_jvm_type(Type *type)
     }
 }
 
-void generate_code(Statement **stmts, int stmtCount, const char *filename, const char *outfilename)
+void generate_code(Statement **stmts, int stmtcount, const char *infilename, const char *outfilename)
 {
     CodegenContext ctx = {0};
-    ctx.filename = filename;
+    ctx.infilename = infilename;
     ctx.currentfunc = NULL;
     ctx.localcount = 0;
     ctx.stacksize = 0;
@@ -69,10 +69,10 @@ void generate_code(Statement **stmts, int stmtCount, const char *filename, const
 
     emit_class_header(&ctx);
     emit_global_variables(&ctx);
-    emit_functions(&ctx, stmts, stmtCount);
-    emit_main_method(&ctx);
-    emit_init_method(&ctx);
-    emit_clinit_method(&ctx);
+    emit_functions(&ctx, stmts, stmtcount);
+    emit_main(&ctx);
+    emit_init(&ctx);
+    emit_clinit(&ctx);
 
     fclose(ctx.output);
 }
@@ -80,7 +80,7 @@ void generate_code(Statement **stmts, int stmtCount, const char *filename, const
 static void emit_class_header(CodegenContext *ctx)
 {
     char class_name[256];
-    snprintf(class_name, sizeof(class_name), "%.*s", (int)(strlen(ctx->filename) - 2), ctx->filename);
+    snprintf(class_name, sizeof(class_name), "%.*s", (int)(strlen(ctx->infilename) - 2), ctx->infilename);
     fprintf(ctx->output, ".class public %s\n", class_name);
     fprintf(ctx->output, ".super java/lang/Object\n\n");
 }
@@ -96,34 +96,34 @@ static void emit_global_variables(CodegenContext *ctx)
         }
         var = var->next;
     }
-    if (varSymbols)
-        fprintf(ctx->output, "\n");
+    fprintf(ctx->output, "\n");
 }
 
-static void emit_functions(CodegenContext *ctx, Statement **stmts, int stmtCount)
+static void emit_functions(CodegenContext *ctx, Statement **stmts, int stmtcount)
 {
-    for (int i = 0; i < stmtCount; i++)
+    for (int i = 0; i < stmtcount; i++)
     {
         Statement *stmt = stmts[i];
         if (stmt->kind == STMT_COMPOUND && stmt->u.func)
         {
             emit_function(ctx, stmt->u.func);
         }
+        free(stmt);
     }
 }
 
-static void emit_main_method(CodegenContext *ctx)
+static void emit_main(CodegenContext *ctx)
 {
     fprintf(ctx->output, ".method public static main : ([Ljava/lang/String;)V\n");
     emit(ctx, ".code stack 1 locals 1");
-    emit(ctx, "invokestatic Method %.*s main ()I", (int)(strlen(ctx->filename) - 2), ctx->filename);
+    emit(ctx, "invokestatic Method %.*s main ()I", (int)(strlen(ctx->infilename) - 2), ctx->infilename);
     emit(ctx, "invokestatic Method java/lang/System exit (I)V");
     emit(ctx, "return");
     emit(ctx, ".end code");
     fprintf(ctx->output, ".end method\n\n");
 }
 
-static void emit_init_method(CodegenContext *ctx)
+static void emit_init(CodegenContext *ctx)
 {
     fprintf(ctx->output, ".method <init> : ()V\n");
     emit(ctx, ".code stack 1 locals 1");
@@ -134,7 +134,7 @@ static void emit_init_method(CodegenContext *ctx)
     fprintf(ctx->output, ".end method\n\n");
 }
 
-static void emit_clinit_method(CodegenContext *ctx)
+static void emit_clinit(CodegenContext *ctx)
 {
     bool needed = false;
     VarSymbol *var = varSymbols;
@@ -190,7 +190,7 @@ static void emit_function(CodegenContext *ctx, Function *func)
     strcat(signature, get_jvm_type(&func->returnType));
 
     fprintf(ctx->output, ".method public static %s : %s\n", func->name, signature);
-    emit(ctx, ".code stack %d locals %d", func->stackLimit ? func->stackLimit : 2, ctx->localcount);
+    emit(ctx, ".code stack %d locals %d", func->stackLimit ? (func->stackLimit < 4 ? 4 : func->stackLimit) : 4, ctx->localcount);
 
     emit_statement(ctx, func->body);
 
@@ -205,14 +205,14 @@ static void emit_function(CodegenContext *ctx, Function *func)
 
 static void emit_statement(CodegenContext *ctx, Statement *stmt)
 {
-    static bool inDeadCode = false;
+    static bool indeadcode = false;
     if (!stmt)
         return;
 
     if (stmt->kind == STMT_RETURN)
     {
-        inDeadCode = true;
-        emit(ctx, "; return statement at %s line %d", ctx->filename, stmt->lineno);
+        indeadcode = true;
+        emit(ctx, "; return statement at %s line %d", ctx->infilename, stmt->lineno);
         if (stmt->u.expr)
         {
             emit_expression(ctx, stmt->u.expr);
@@ -225,9 +225,8 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
         return;
     }
 
-    if (inDeadCode)
+    if (indeadcode)
     {
-        emit(ctx, "DEAD ; statement at %s line %d", ctx->filename, stmt->lineno);
         return;
     }
 
@@ -236,7 +235,7 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
     case STMT_EXPR:
         if (stmt->u.expr)
         {
-            emit(ctx, "; expression statement at %s line %d", ctx->filename, stmt->lineno);
+            emit(ctx, "; expression statement at %s line %d", ctx->infilename, stmt->lineno);
             emit_expression(ctx, stmt->u.expr);
             if (stmt->u.expr->kind != EXPR_ASSIGN && stmt->u.expr->exprType.base != BASE_VOID)
             {
@@ -255,7 +254,7 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
     case STMT_DECL:
         if (stmt->u.decl.initialized && stmt->u.decl.init)
         {
-            emit(ctx, "; declaration initialization at %s line %d", ctx->filename, stmt->lineno);
+            emit(ctx, "; declaration initialization at %s line %d", ctx->infilename, stmt->lineno);
             emit_expression(ctx, stmt->u.decl.init);
             VarSymbol *vs = lookup_variable(stmt->u.decl.name);
             if (vs && !vs->isGlobal)
@@ -273,16 +272,11 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
 {
     if (!expr)
         return;
-    ctx->stacksize++;
-    if (ctx->stacksize > ctx->maxstacksize)
-    {
-        ctx->maxstacksize = ctx->stacksize;
-        ctx->currentfunc->stackLimit = ctx->maxstacksize;
-    }
 
     switch (expr->kind)
     {
     case EXPR_LITERAL:
+        ctx->stacksize++;
         if (expr->exprType.base == BASE_INT)
         {
             int val = atoi(expr->value);
@@ -315,17 +309,18 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
         break;
     case EXPR_IDENTIFIER:
     {
+        ctx->stacksize++;
         VarSymbol *vs = lookup_variable(expr->value);
         if (!vs)
         {
             fprintf(stderr, "Code generation error in file %s line %d: Undeclared variable %s\n",
-                    ctx->filename, expr->lineno, expr->value);
+                    ctx->infilename, expr->lineno, expr->value);
             exit(1);
         }
         if (vs->isGlobal)
         {
             emit(ctx, "getstatic Field %.*s %s %s",
-                 (int)(strlen(ctx->filename) - 2), ctx->filename,
+                 (int)(strlen(ctx->infilename) - 2), ctx->infilename,
                  vs->name, get_jvm_type(&vs->type));
         }
         else
@@ -338,8 +333,10 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
     break;
     case EXPR_BINARY:
         emit_expression(ctx, expr->left);
+        int left_stacksize = ctx->stacksize;
         emit_expression(ctx, expr->right);
-        ctx->stacksize--; // Two operands consumed, one result produced
+        int right_stacksize = ctx->stacksize;
+        ctx->stacksize = left_stacksize + right_stacksize - 1;
         if (expr->exprType.base == BASE_INT)
         {
             switch (expr->op)
@@ -361,7 +358,7 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
                 break;
             default:
                 fprintf(stderr, "Code generation error in file %s line %d: Unsupported binary operator\n",
-                        ctx->filename, expr->lineno);
+                        ctx->infilename, expr->lineno);
                 exit(1);
             }
         }
@@ -383,7 +380,7 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
                 break;
             default:
                 fprintf(stderr, "Code generation error in file %s line %d: Unsupported float operator\n",
-                        ctx->filename, expr->lineno);
+                        ctx->infilename, expr->lineno);
                 exit(1);
             }
         }
@@ -391,12 +388,12 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
     case EXPR_ASSIGN:
         if (expr->left->kind == EXPR_INDEX)
         {
-            Expression *arrayExpr = expr->left->left;  
-            Expression *indexExpr = expr->left->right; 
-            emit_expression(ctx, arrayExpr);          
-            emit_expression(ctx, indexExpr);          
-            emit_expression(ctx, expr->right);         
-            ctx->stacksize -= 2;                      
+            Expression *arrayExpr = expr->left->left;
+            Expression *indexExpr = expr->left->right;
+            emit_expression(ctx, arrayExpr);
+            emit_expression(ctx, indexExpr);
+            emit_expression(ctx, expr->right);
+            ctx->stacksize -= 2;
             if (expr->left->exprType.base == BASE_INT)
             {
                 emit(ctx, "iastore");
@@ -412,7 +409,7 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
             else
             {
                 fprintf(stderr, "Code generation error in file %s line %d: Unsupported array element type\n",
-                        ctx->filename, expr->lineno);
+                        ctx->infilename, expr->lineno);
                 exit(1);
             }
             emit_expression(ctx, expr->left);
@@ -424,24 +421,29 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
             if (!vs)
             {
                 fprintf(stderr, "Code generation error in file %s line %d: Undeclared variable %s\n",
-                        ctx->filename, expr->lineno, expr->left->value);
+                        ctx->infilename, expr->lineno, expr->left->value);
                 exit(1);
             }
             if (vs->isGlobal)
             {
-                if (expr->right->kind == EXPR_BINARY) {
+                if (expr->right->kind == EXPR_BINARY)
+                {
                     emit(ctx, "dup");
+                    ctx->stacksize++;
                 }
                 emit(ctx, "putstatic Field %.*s %s %s",
-                     (int)(strlen(ctx->filename) - 2), ctx->filename,
+                     (int)(strlen(ctx->infilename) - 2), ctx->infilename,
                      vs->name, get_jvm_type(&vs->type));
+                ctx->stacksize--;
             }
             else
             {
                 emit(ctx, "dup");
+                ctx->stacksize++;
                 emit(ctx, "%sstore %d ; %s",
                      vs->type.base == BASE_FLOAT ? "f" : "i",
                      vs->localIndex, vs->name);
+                ctx->stacksize--;
             }
         }
         break;
@@ -451,41 +453,59 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
         {
             emit_expression(ctx, expr->args[i]);
         }
-        ctx->stacksize -= expr->numArgs;
-        Function *func = lookup_function(expr->left->value);
-        if (!func)
+        if (expr->exprType.base != BASE_VOID)
+            ctx->stacksize -= (expr->numArgs - 1);
+        else
+            ctx->stacksize -= expr->numArgs;
+
+        if (strcmp(expr->left->value, "putint") == 0)
         {
-            if (strcmp(expr->left->value, "putint") == 0) {
-                emit(ctx, "invokestatic Method lib440 putint (I)V");
-            } else if (strcmp(expr->left->value, "putchar") == 0) {
-                emit(ctx, "invokestatic Method lib440 putchar (I)I");
-            } else if (strcmp(expr->left->value, "putstring") == 0) {
-                emit(ctx, "invokestatic Method lib440 putstring ([C)V");
-            } else if (strcmp(expr->left->value, "getint") == 0) {
-                emit(ctx, "invokestatic Method lib440 getint ()I");
-            } else if (strcmp(expr->left->value, "getchar") == 0) {
-                emit(ctx, "invokestatic Method lib440 getchar ()I");
-            } else if (strcmp(expr->left->value, "putfloat") == 0) {
-                emit(ctx, "invokestatic Method lib440 putfloat (F)V");
-            } else if (strcmp(expr->left->value, "getfloat") == 0) {
-                emit(ctx, "invokestatic Method lib440 getfloat ()F");
-            } else {
-                fprintf(stderr, "Code generation error in file %s line %d: Undeclared function %s\n",
-                        ctx->filename, expr->lineno, expr->left->value);
-                exit(1);
-            }
+            emit(ctx, "invokestatic Method lib440 putint (I)V");
         }
+        else if (strcmp(expr->left->value, "putchar") == 0)
+        {
+            emit(ctx, "invokestatic Method lib440 putchar (I)I");
+        }
+        else if (strcmp(expr->left->value, "putstring") == 0)
+        {
+            emit(ctx, "invokestatic Method lib440 putstring ([C)V");
+        }
+        else if (strcmp(expr->left->value, "getint") == 0)
+        {
+            emit(ctx, "invokestatic Method lib440 getint ()I");
+        }
+        else if (strcmp(expr->left->value, "getchar") == 0)
+        {
+            emit(ctx, "invokestatic Method lib440 getchar ()I");
+        }
+        else if (strcmp(expr->left->value, "putfloat") == 0)
+        {
+            emit(ctx, "invokestatic Method lib440 putfloat (F)V");
+        }
+        else if (strcmp(expr->left->value, "getfloat") == 0)
+        {
+            emit(ctx, "invokestatic Method lib440 getfloat ()F");
+        }
+
         else
         {
+            Function *func = lookup_function(expr->left->value);
+            if (!func)
+            {
+                fprintf(stderr, "Code generation error in file %s line %d: Undeclared function %s\n",
+                        ctx->infilename, expr->lineno, expr->left->value);
+                exit(1);
+            }
             char signature[256] = "(";
-            for (int i = 0; i < func->numParams; i++) {
+            for (int i = 0; i < func->numParams; i++)
+            {
                 strcat(signature, get_jvm_type(&func->params[i]->declType));
             }
             strcat(signature, ")");
             strcat(signature, get_jvm_type(&func->returnType));
             emit(ctx, "invokestatic Method %.*s %s %s",
-                (int)(strlen(ctx->filename) - 2), ctx->filename,
-                func->name, signature);
+                 (int)(strlen(ctx->infilename) - 2), ctx->infilename,
+                 func->name, signature);
         }
     }
     break;
@@ -501,40 +521,45 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
             if (!vs)
             {
                 fprintf(stderr, "Code generation error in file %s line %d: Undeclared variable %s\n",
-                        ctx->filename, expr->lineno, expr->right->value);
+                        ctx->infilename, expr->lineno, expr->right->value);
                 exit(1);
             }
             if (vs->isGlobal)
             {
                 emit(ctx, "getstatic Field %.*s %s %s",
-                     (int)(strlen(ctx->filename) - 2), ctx->filename,
+                     (int)(strlen(ctx->infilename) - 2), ctx->infilename,
                      vs->name, get_jvm_type(&vs->type));
+                ctx->stacksize++;
                 emit(ctx, "iconst_1");
+                ctx->stacksize++;
                 emit(ctx, expr->op == OP_INC ? "iadd" : "isub");
+                ctx->stacksize--;
                 emit(ctx, "putstatic Field %.*s %s %s",
-                     (int)(strlen(ctx->filename) - 2), ctx->filename,
+                     (int)(strlen(ctx->infilename) - 2), ctx->infilename,
                      vs->name, get_jvm_type(&vs->type));
+                ctx->stacksize--;
             }
             else
             {
                 emit(ctx, "iinc %d %d ; %s",
                      vs->localIndex, expr->op == OP_INC ? 1 : -1, vs->name);
+                emit(ctx, "%sload %d ; %s",
+                     vs->type.base == BASE_FLOAT ? "f" : "i",
+                     vs->localIndex, vs->name);
+                ctx->stacksize++;
             }
-            emit(ctx, "%sload %d ; %s",
-                 vs->type.base == BASE_FLOAT ? "f" : "i",
-                 vs->localIndex, vs->name);
         }
         break;
     case EXPR_CAST:
         emit_expression(ctx, expr->left);
         if (expr->exprType.base == BASE_FLOAT && expr->left->exprType.base == BASE_INT)
         {
-        emit(ctx, "i2f ; cast int to float");
+            emit(ctx, "i2f ; cast int to float");
         }
         else if (!(expr->exprType.base == BASE_INT && expr->left->exprType.base == BASE_CHAR))
         {
             fprintf(stderr, "Code generation error in file %s line %d: Unsupported cast type\n",
-                    ctx->filename, expr->lineno);
+                    ctx->infilename, expr->lineno);
             exit(1);
         }
         break;
@@ -557,13 +582,18 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
         else
         {
             fprintf(stderr, "Code generation error in file %s line %d: Unsupported array element type\n",
-                    ctx->filename, expr->lineno);
+                    ctx->infilename, expr->lineno);
             exit(1);
         }
         break;
     default:
         fprintf(stderr, "Code generation error in file %s line %d: Unsupported expression type\n",
-                ctx->filename, expr->lineno);
+                ctx->infilename, expr->lineno);
         exit(1);
+    }
+    if (ctx->stacksize > ctx->maxstacksize)
+    {
+        ctx->maxstacksize = ctx->stacksize;
+        ctx->currentfunc->stackLimit = ctx->maxstacksize;
     }
 }

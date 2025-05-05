@@ -6,7 +6,7 @@
 
 typedef struct CodegenContext {
     FILE *output;
-    const char *filename;
+    const char *infilename;
     Function *currentfunc;
     int localcount;
     int stacksize;
