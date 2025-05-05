@@ -163,7 +163,7 @@ static void emit_function(CodegenContext *ctx, Function *func)
     ctx->localcount = func->numParams;
     ctx->stacksize = 0;
     ctx->maxstacksize = 0;
-
+    ctx->indeadcode = false;
     for (int i = 0; i < func->numParams; i++)
     {
         VarSymbol *vs = lookup_variable(func->params[i]->name);
@@ -191,7 +191,6 @@ static void emit_function(CodegenContext *ctx, Function *func)
 
     fprintf(ctx->output, ".method public static %s : %s\n", func->name, signature);
     emit(ctx, ".code stack %d locals %d", func->stackLimit ? (func->stackLimit < 4 ? 4 : func->stackLimit) : 4, ctx->localcount);
-
     emit_statement(ctx, func->body);
 
     if (func->returnType.base == BASE_VOID)
@@ -205,13 +204,11 @@ static void emit_function(CodegenContext *ctx, Function *func)
 
 static void emit_statement(CodegenContext *ctx, Statement *stmt)
 {
-    static bool indeadcode = false;
-    if (!stmt)
+    if (!stmt || ctx->indeadcode)
         return;
 
     if (stmt->kind == STMT_RETURN)
     {
-        indeadcode = true;
         emit(ctx, "; return statement at %s line %d", ctx->infilename, stmt->lineno);
         if (stmt->u.expr)
         {
@@ -225,10 +222,6 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
         return;
     }
 
-    if (indeadcode)
-    {
-        return;
-    }
 
     switch (stmt->kind)
     {
@@ -453,10 +446,9 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
         {
             emit_expression(ctx, expr->args[i]);
         }
+        ctx->stacksize -= expr->numArgs;
         if (expr->exprType.base != BASE_VOID)
-            ctx->stacksize -= (expr->numArgs - 1);
-        else
-            ctx->stacksize -= expr->numArgs;
+            ctx->stacksize++;
 
         if (strcmp(expr->left->value, "putint") == 0)
         {

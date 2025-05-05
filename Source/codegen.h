@@ -11,7 +11,7 @@ typedef struct CodegenContext {
     int localcount;
     int stacksize;
     int maxstacksize;
-
+    bool indeadcode;
 } CodegenContext;
 
 void generate_code(Statement **stmts, int stmtCount, const char *filename, const char *outfilename);
