@@ -32,7 +32,12 @@ static const char *get_jvm_type(Type *type)
     {
         if (type->base == BASE_CHAR)
             return "[C";
-        return "[I";
+        if (type->base == BASE_INT)
+            return "[I";
+        if (type->base == BASE_FLOAT)
+            return "[F";
+        if (type->base == BASE_STRUCT)
+            return "[Ljava/lang/Object;";
     }
     switch (type->base)
     {
@@ -45,7 +50,7 @@ static const char *get_jvm_type(Type *type)
     case BASE_VOID:
         return "V";
     case BASE_STRUCT:
-        return "Ljava/lang/Object;";
+        return "Ljava/lang/Object;"; 
     default:
         return "V";
     }
@@ -59,6 +64,8 @@ void generate_code(Statement **stmts, int stmtcount, const char *infilename, con
     ctx.localcount = 0;
     ctx.stacksize = 0;
     ctx.maxstacksize = 0;
+    ctx.labelcount = 0;
+    ctx.structdefs = structSymbols;
 
     ctx.output = fopen(outfilename, "w");
     if (!ctx.output)
@@ -95,6 +102,13 @@ static void emit_global_variables(CodegenContext *ctx)
             fprintf(ctx->output, ".field public static %s %s\n", var->name, get_jvm_type(&var->type));
         }
         var = var->next;
+    }
+    // Emit struct definitions as classes (if needed)
+    StructDef *sdef = ctx->structdefs;
+    while (sdef)
+    {
+        fprintf(ctx->output, "; Struct %s would be defined as a class here\n", sdef->name);
+        sdef = sdef->next;
     }
     fprintf(ctx->output, "\n");
 }
@@ -166,15 +180,15 @@ static void emit_function(CodegenContext *ctx, Function *func)
     ctx->indeadcode = false;
     for (int i = 0; i < func->numParams; i++)
     {
-        VarSymbol *vs = lookup_variable(func->params[i]->name);
+        VarSymbol *vs = lookup_variable(func->params[i]->name, ctx->currentfunc);
         if (vs)
             vs->localIndex = i;
     }
 
-    VarSymbol *vs = varSymbols;
+    VarSymbol *vs = func->locals;
     while (vs)
     {
-        if (!vs->isGlobal && vs->localIndex == -1)
+        if (vs->localIndex == -1)
         {
             vs->localIndex = ctx->localcount++;
         }
@@ -184,7 +198,7 @@ static void emit_function(CodegenContext *ctx, Function *func)
     char signature[256] = "(";
     for (int i = 0; i < func->numParams; i++)
     {
-        strcat(signature, get_jvm_type(&func->params[i]->declType));
+        strcat(signature, get_jvm_type(&func->params[i]->type));
     }
     strcat(signature, ")");
     strcat(signature, get_jvm_type(&func->returnType));
@@ -233,6 +247,7 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
             if (stmt->u.expr->kind != EXPR_ASSIGN && stmt->u.expr->exprType.base != BASE_VOID)
             {
                 emit(ctx, "pop");
+                ctx->stacksize--;
             }
         }
         break;
@@ -249,7 +264,7 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
         {
             emit(ctx, "; declaration initialization at %s line %d", ctx->infilename, stmt->lineno);
             emit_expression(ctx, stmt->u.decl.init);
-            VarSymbol *vs = lookup_variable(stmt->u.decl.name);
+            VarSymbol *vs = lookup_variable(stmt->u.decl.name,ctx->currentfunc);
             if (vs && !vs->isGlobal)
             {
                 emit(ctx, "%sstore %d ; %s",
@@ -303,7 +318,7 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
     case EXPR_IDENTIFIER:
     {
         ctx->stacksize++;
-        VarSymbol *vs = lookup_variable(expr->value);
+        VarSymbol *vs = lookup_variable(expr->value,ctx->currentfunc);
         if (!vs)
         {
             fprintf(stderr, "Code generation error in file %s line %d: Undeclared variable %s\n",
@@ -410,7 +425,7 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
         else
         {
             emit_expression(ctx, expr->right);
-            VarSymbol *vs = lookup_variable(expr->left->value);
+            VarSymbol *vs = lookup_variable(expr->left->value,ctx->currentfunc);
             if (!vs)
             {
                 fprintf(stderr, "Code generation error in file %s line %d: Undeclared variable %s\n",
@@ -491,7 +506,7 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
             char signature[256] = "(";
             for (int i = 0; i < func->numParams; i++)
             {
-                strcat(signature, get_jvm_type(&func->params[i]->declType));
+                strcat(signature, get_jvm_type(&func->params[i]->type));
             }
             strcat(signature, ")");
             strcat(signature, get_jvm_type(&func->returnType));
@@ -509,7 +524,7 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
         }
         else if (expr->op == OP_INC || expr->op == OP_DEC)
         {
-            VarSymbol *vs = lookup_variable(expr->right->value);
+            VarSymbol *vs = lookup_variable(expr->right->value,ctx->currentfunc);
             if (!vs)
             {
                 fprintf(stderr, "Code generation error in file %s line %d: Undeclared variable %s\n",

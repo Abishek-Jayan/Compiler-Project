@@ -1,7 +1,6 @@
 #ifndef CODEGEN_H
 #define CODEGEN_H
 
-
 #include "parser_ast.h"
 
 typedef struct CodegenContext {
@@ -12,6 +11,8 @@ typedef struct CodegenContext {
     int stacksize;
     int maxstacksize;
     bool indeadcode;
+    int labelcount; 
+    StructDef *structdefs; 
 } CodegenContext;
 
 void generate_code(Statement **stmts, int stmtCount, const char *filename, const char *outfilename);

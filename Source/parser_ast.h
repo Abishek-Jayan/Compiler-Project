@@ -17,7 +17,8 @@ typedef struct Type {
     BaseType base;
     bool isConst;            
     bool isArray;            
-    char structName[64];     // valid only if base==BASE_STRUCT
+    char structName[64];
+    int lineDeclared;
 } Type;
 
 /* Format a type as a string (e.g. "const struct pair[]" or "int") */
@@ -105,11 +106,12 @@ typedef struct Function {
     char name[64];
     Type returnType;
     int numParams;
-    Declaration **params;
+    VarSymbol **params;
     struct Statement *body;      
-    bool defined;         // true if function defined, false if only prototype
+    bool defined;         
     struct Function *next;
     int stackLimit;
+    VarSymbol *locals;
 } Function;
 
 // Statement node 
@@ -153,29 +155,28 @@ extern StructDef *structSymbols;
 
 
 // Parser Function Prototypes 
-Statement *parser_statement(lexer *L, LookaheadBuffer *buf, bool isGlobal, bool isConst);
-Statement *parse_compound(lexer *L);
-Expression *parse_expression(lexer *L);
-Expression *parse_assignment(lexer *L);
-Expression *parse_ternary(lexer *L);
-Expression *parse_logicalOr(lexer *L);
-Expression *parse_logicalAnd(lexer *L);
-Expression *parse_equality(lexer *L);
-Expression *parse_relational(lexer *L);
-Expression *parse_additive(lexer *L);
-Expression *parse_multiplicative(lexer *L);
-Expression *parse_unary(lexer *L);
-Expression *parse_primary(lexer *L);
+Statement *parser_statement(lexer *L, LookaheadBuffer *buf, bool isGlobal, bool isConst, Function *currentFunc);
+Statement *parse_compound(lexer *L, Function *currentFunc);
+Expression *parse_assignment(lexer *L, Function *currentFunc);
+Expression *parse_ternary(lexer *L,Function *currentFunc);
+Expression *parse_logicalOr(lexer *L,Function *currentFunc);
+Expression *parse_logicalAnd(lexer *L,Function *currentFunc);
+Expression *parse_equality(lexer *L,Function *currentFunc);
+Expression *parse_relational(lexer *L,Function *currentFunc);
+Expression *parse_additive(lexer *L,Function *currentFunc);
+Expression *parse_multiplicative(lexer *L,Function *currentFunc);
+Expression *parse_unary(lexer *L,Function *currentFunc);
+Expression *parse_primary(lexer *L,Function *currentFunc);
 
 // Declaration parsing 
-Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal, bool isConst);
+Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal, bool isConst, Function *currentFunc);
 
 // Parsing function prototypes and struct declarations
 Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf);
 Statement *parse_struct(lexer *L, LookaheadBuffer *buf);
 Statement **parse_program(lexer *L, int *stmtCount);
 
-VarSymbol *lookup_variable(const char *name);
+VarSymbol *lookup_variable(const char *name, Function *currentFunc);
 Function *lookup_function(const char *name);
 
 // Utility initialization routines 
