@@ -50,7 +50,7 @@ static const char *get_jvm_type(Type *type)
     case BASE_VOID:
         return "V";
     case BASE_STRUCT:
-        return "Ljava/lang/Object;"; 
+        return "Ljava/lang/Object;";
     default:
         return "V";
     }
@@ -66,6 +66,9 @@ void generate_code(Statement **stmts, int stmtcount, const char *infilename, con
     ctx.maxstacksize = 0;
     ctx.labelcount = 0;
     ctx.structdefs = structSymbols;
+    ctx.inloop = false;
+    ctx.curloopstart = -1;
+    ctx.curloopend = -1;
 
     ctx.output = fopen(outfilename, "w");
     if (!ctx.output)
@@ -178,6 +181,9 @@ static void emit_function(CodegenContext *ctx, Function *func)
     ctx->stacksize = 0;
     ctx->maxstacksize = 0;
     ctx->indeadcode = false;
+    ctx->inloop = false;
+    ctx->curloopstart = -1;
+    ctx->curloopend = -1;
     for (int i = 0; i < func->numParams; i++)
     {
         VarSymbol *vs = lookup_variable(func->params[i]->name, ctx->currentfunc);
@@ -204,7 +210,7 @@ static void emit_function(CodegenContext *ctx, Function *func)
     strcat(signature, get_jvm_type(&func->returnType));
 
     fprintf(ctx->output, ".method public static %s : %s\n", func->name, signature);
-    emit(ctx, ".code stack %d locals %d", func->stackLimit ? (func->stackLimit < 4 ? 4 : func->stackLimit) : 4, ctx->localcount);
+    emit(ctx, ".code stack %d locals %d", ctx->maxstacksize < 4 ? 4 : ctx->maxstacksize, ctx->localcount);
     emit_statement(ctx, func->body);
 
     if (func->returnType.base == BASE_VOID)
@@ -221,22 +227,6 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
     if (!stmt || ctx->indeadcode)
         return;
 
-    if (stmt->kind == STMT_RETURN)
-    {
-        emit(ctx, "; return statement at %s line %d", ctx->infilename, stmt->lineno);
-        if (stmt->u.expr)
-        {
-            emit_expression(ctx, stmt->u.expr);
-            emit(ctx, "%sreturn", stmt->u.expr->exprType.base == BASE_FLOAT ? "f" : "i");
-        }
-        else
-        {
-            emit(ctx, "return");
-        }
-        return;
-    }
-
-
     switch (stmt->kind)
     {
     case STMT_EXPR:
@@ -247,11 +237,21 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
             if (stmt->u.expr->kind != EXPR_ASSIGN && stmt->u.expr->exprType.base != BASE_VOID)
             {
                 emit(ctx, "pop");
-                ctx->stacksize--;
             }
         }
         break;
     case STMT_RETURN:
+        emit(ctx, "; return statement at %s line %d", ctx->infilename, stmt->lineno);
+        if (stmt->u.expr)
+        {
+            emit_expression(ctx, stmt->u.expr);
+            emit(ctx, "%sreturn", stmt->u.expr->exprType.base == BASE_FLOAT ? "f" : "i");
+        }
+        else
+        {
+            emit(ctx, "return");
+        }
+        ctx->indeadcode = true;
         break;
     case STMT_COMPOUND:
         for (int i = 0; i < stmt->numStmts; i++)
@@ -264,7 +264,7 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
         {
             emit(ctx, "; declaration initialization at %s line %d", ctx->infilename, stmt->lineno);
             emit_expression(ctx, stmt->u.decl.init);
-            VarSymbol *vs = lookup_variable(stmt->u.decl.name,ctx->currentfunc);
+            VarSymbol *vs = lookup_variable(stmt->u.decl.name, ctx->currentfunc);
             if (vs && !vs->isGlobal)
             {
                 emit(ctx, "%sstore %d ; %s",
@@ -272,6 +272,117 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
                      vs->localIndex, vs->name);
             }
         }
+        break;
+    case STMT_IF:
+        emit_expression(ctx, stmt->u.ifstmt->condition);
+        int label_else = ctx->labelcount++;
+        int label_end = ctx->labelcount++;
+        emit(ctx, "ifeq L%d", label_else);
+        emit_statement(ctx, stmt->u.ifstmt->thenstmt);
+        if (stmt->u.ifstmt->elsestmt)
+        {
+            emit(ctx, "goto L%d", label_end);
+            emit(ctx, "L%d:", label_else);
+            emit_statement(ctx, stmt->u.ifstmt->elsestmt);
+            emit(ctx, "L%d:", label_end);
+        }
+        else
+        {
+            emit(ctx, "L%d:", label_else);
+        }
+        break;
+    case STMT_WHILE:
+        int old_start = ctx->curloopstart;
+        int old_end = ctx->curloopend;
+        bool old_in_loop = ctx->inloop;
+        int label_start = ctx->labelcount++;
+        label_end = ctx->labelcount++;
+        ctx->curloopstart = label_start;
+        ctx->curloopend = label_end;
+        ctx->inloop = true;
+        emit(ctx, "L%d:", label_start);
+        emit_expression(ctx, stmt->u.whilestmt->condition);
+        emit(ctx, "ifeq L%d", label_end);
+        emit_statement(ctx, stmt->u.whilestmt->body);
+        emit(ctx, "goto L%d", label_start);
+        emit(ctx, "L%d:", label_end);
+        ctx->curloopstart = old_start;
+        ctx->curloopend = old_end;
+        ctx->inloop = old_in_loop;
+        break;
+    case STMT_DO:
+        old_start = ctx->curloopstart;
+        old_end = ctx->curloopend;
+        old_in_loop = ctx->inloop;
+        label_start = ctx->labelcount++;
+        label_end = ctx->labelcount++;
+        ctx->curloopstart = label_start;
+        ctx->curloopend = label_end;
+        ctx->inloop = true;
+        emit(ctx, "L%d:", label_start);
+        emit_statement(ctx, stmt->u.dostmt->body);
+        emit_expression(ctx, stmt->u.dostmt->condition);
+        emit(ctx, "ifne L%d", label_start);
+        emit(ctx, "L%d:", label_end);
+        ctx->curloopstart = old_start;
+        ctx->curloopend = old_end;
+        ctx->inloop = old_in_loop;
+        break;
+    case STMT_FOR:
+        old_start = ctx->curloopstart;
+        old_end = ctx->curloopend;
+        old_in_loop = ctx->inloop;
+        label_start = ctx->labelcount++;
+        int label_update = ctx->labelcount++;
+        label_end = ctx->labelcount++;
+        ctx->curloopstart = label_start;
+        ctx->curloopend = label_end;
+        ctx->inloop = true;
+        if (stmt->u.forstmt->init)
+        {
+            emit_statement(ctx, stmt->u.forstmt->init);
+        }
+        emit(ctx, "L%d:", label_start);
+        if (stmt->u.forstmt->condition)
+        {
+            emit_expression(ctx, stmt->u.forstmt->condition);
+            emit(ctx, "ifeq L%d", label_end);
+        }
+        emit_statement(ctx, stmt->u.forstmt->body);
+        emit(ctx, "L%d:", label_update);
+        if (stmt->u.forstmt->update)
+        {
+            emit_expression(ctx, stmt->u.forstmt->update);
+            if (stmt->u.forstmt->update->exprType.base != BASE_VOID)
+            {
+                emit(ctx, "pop");
+            }
+        }
+        emit(ctx, "goto L%d", label_start);
+        emit(ctx, "L%d:", label_end);
+        ctx->curloopstart = old_start;
+        ctx->curloopend = old_end;
+        ctx->inloop = old_in_loop;
+        break;
+    case STMT_BREAK:
+        if (!ctx->inloop)
+        {
+            fprintf(stderr, "Code generation error in file %s line %d: break not inside a loop\n",
+                    ctx->infilename, stmt->lineno);
+            exit(1);
+        }
+        emit(ctx, "goto L%d", ctx->curloopend);
+        ctx->indeadcode = true;
+        break;
+    case STMT_CONTINUE:
+        if (!ctx->inloop)
+        {
+            fprintf(stderr, "Code generation error in file %s line %d: continue not inside a loop\n",
+                    ctx->infilename, stmt->lineno);
+            exit(1);
+        }
+        emit(ctx, "goto L%d", ctx->curloopstart);
+        ctx->indeadcode = true;
         break;
     }
 }
@@ -318,7 +429,7 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
     case EXPR_IDENTIFIER:
     {
         ctx->stacksize++;
-        VarSymbol *vs = lookup_variable(expr->value,ctx->currentfunc);
+        VarSymbol *vs = lookup_variable(expr->value, ctx->currentfunc);
         if (!vs)
         {
             fprintf(stderr, "Code generation error in file %s line %d: Undeclared variable %s\n",
@@ -342,54 +453,129 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
     case EXPR_BINARY:
         emit_expression(ctx, expr->left);
         int left_stacksize = ctx->stacksize;
-        emit_expression(ctx, expr->right);
-        int right_stacksize = ctx->stacksize;
-        ctx->stacksize = left_stacksize + right_stacksize - 1;
-        if (expr->exprType.base == BASE_INT)
+        if (expr->op == OP_AND || expr->op == OP_OR)
         {
-            switch (expr->op)
-            {
-            case OP_PLUS:
-                emit(ctx, "iadd");
-                break;
-            case OP_MINUS:
-                emit(ctx, "isub");
-                break;
-            case OP_MUL:
-                emit(ctx, "imul");
-                break;
-            case OP_DIV:
-                emit(ctx, "idiv");
-                break;
-            case OP_MOD:
-                emit(ctx, "irem");
-                break;
-            default:
-                fprintf(stderr, "Code generation error in file %s line %d: Unsupported binary operator\n",
-                        ctx->infilename, expr->lineno);
-                exit(1);
-            }
+            int label_shortcircuit = ctx->labelcount++;
+            int label_end = ctx->labelcount++;
+            emit(ctx, "dup");
+            ctx->stacksize++;
+            emit(ctx, expr->op == OP_AND ? "ifeq L%d" : "ifne L%d", label_shortcircuit);
+            emit(ctx, "pop");
+            ctx->stacksize--;
+            emit_expression(ctx, expr->right);
+            emit(ctx, "goto L%d", label_end);
+            emit(ctx, "L%d:", label_shortcircuit);
+            emit(ctx, expr->op == OP_AND ? "iconst_0" : "iconst_1");
+            ctx->stacksize++;
+            emit(ctx, "L%d:", label_end);
+            ctx->stacksize = left_stacksize;
         }
-        else if (expr->exprType.base == BASE_FLOAT)
+        else
         {
-            switch (expr->op)
+            emit_expression(ctx, expr->right);
+            int right_stacksize = ctx->stacksize;
+            ctx->stacksize = left_stacksize + right_stacksize - 1;
+
+            if (expr->exprType.base == BASE_INT)
             {
-            case OP_PLUS:
-                emit(ctx, "fadd");
-                break;
-            case OP_MINUS:
-                emit(ctx, "fsub");
-                break;
-            case OP_MUL:
-                emit(ctx, "fmul");
-                break;
-            case OP_DIV:
-                emit(ctx, "fdiv");
-                break;
-            default:
-                fprintf(stderr, "Code generation error in file %s line %d: Unsupported float operator\n",
-                        ctx->infilename, expr->lineno);
-                exit(1);
+                switch (expr->op)
+                {
+                case OP_PLUS:
+                    emit(ctx, "iadd");
+                    break;
+                case OP_MINUS:
+                    emit(ctx, "isub");
+                    break;
+                case OP_MUL:
+                    emit(ctx, "imul");
+                    break;
+                case OP_DIV:
+                    emit(ctx, "idiv");
+                    break;
+                case OP_MOD:
+                    emit(ctx, "irem");
+                    break;
+                case OP_EQ:
+                    emit(ctx, "isub");
+                    emit(ctx, "ifeq L%d", ctx->labelcount);
+                    emit(ctx, "iconst_0");
+                    emit(ctx, "goto L%d", ctx->labelcount + 1);
+                    emit(ctx, "L%d:", ctx->labelcount++);
+                    emit(ctx, "iconst_1");
+                    emit(ctx, "L%d:", ctx->labelcount++);
+                    break;
+                case OP_NE:
+                    emit(ctx, "isub");
+                    emit(ctx, "ifne L%d", ctx->labelcount);
+                    emit(ctx, "iconst_0");
+                    emit(ctx, "goto L%d", ctx->labelcount + 1);
+                    emit(ctx, "L%d:", ctx->labelcount++);
+                    emit(ctx, "iconst_1");
+                    emit(ctx, "L%d:", ctx->labelcount++);
+                    break;
+                case OP_LT:
+                    emit(ctx, "isub");
+                    emit(ctx, "iflt L%d", ctx->labelcount);
+                    emit(ctx, "iconst_0");
+                    emit(ctx, "goto L%d", ctx->labelcount + 1);
+                    emit(ctx, "L%d:", ctx->labelcount++);
+                    emit(ctx, "iconst_1");
+                    emit(ctx, "L%d:", ctx->labelcount++);
+                    break;
+                case OP_LE:
+                    emit(ctx, "isub");
+                    emit(ctx, "ifle L%d", ctx->labelcount);
+                    emit(ctx, "iconst_0");
+                    emit(ctx, "goto L%d", ctx->labelcount + 1);
+                    emit(ctx, "L%d:", ctx->labelcount++);
+                    emit(ctx, "iconst_1");
+                    emit(ctx, "L%d:", ctx->labelcount++);
+                    break;
+                case OP_GT:
+                    emit(ctx, "isub");
+                    emit(ctx, "ifgt L%d", ctx->labelcount);
+                    emit(ctx, "iconst_0");
+                    emit(ctx, "goto L%d", ctx->labelcount + 1);
+                    emit(ctx, "L%d:", ctx->labelcount++);
+                    emit(ctx, "iconst_1");
+                    emit(ctx, "L%d:", ctx->labelcount++);
+                    break;
+                case OP_GE:
+                    emit(ctx, "isub");
+                    emit(ctx, "ifge L%d", ctx->labelcount);
+                    emit(ctx, "iconst_0");
+                    emit(ctx, "goto L%d", ctx->labelcount + 1);
+                    emit(ctx, "L%d:", ctx->labelcount++);
+                    emit(ctx, "iconst_1");
+                    emit(ctx, "L%d:", ctx->labelcount++);
+                    break;
+                default:
+                    fprintf(stderr, "Code generation error in file %s line %d: Unsupported binary operator\n",
+                            ctx->infilename, expr->lineno);
+                    exit(1);
+                }
+            }
+            else if (expr->exprType.base == BASE_FLOAT)
+            {
+                switch (expr->op)
+                {
+                case OP_PLUS:
+                    emit(ctx, "fadd");
+                    break;
+                case OP_MINUS:
+                    emit(ctx, "fsub");
+                    break;
+                case OP_MUL:
+                    emit(ctx, "fmul");
+                    break;
+                case OP_DIV:
+                    emit(ctx, "fdiv");
+                    break;
+                default:
+                    fprintf(stderr, "Code generation error in file %s line %d: Unsupported float operator\n",
+                            ctx->infilename, expr->lineno);
+                    exit(1);
+                }
             }
         }
         break;
@@ -425,7 +611,7 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
         else
         {
             emit_expression(ctx, expr->right);
-            VarSymbol *vs = lookup_variable(expr->left->value,ctx->currentfunc);
+            VarSymbol *vs = lookup_variable(expr->left->value, ctx->currentfunc);
             if (!vs)
             {
                 fprintf(stderr, "Code generation error in file %s line %d: Undeclared variable %s\n",
@@ -524,7 +710,7 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
         }
         else if (expr->op == OP_INC || expr->op == OP_DEC)
         {
-            VarSymbol *vs = lookup_variable(expr->right->value,ctx->currentfunc);
+            VarSymbol *vs = lookup_variable(expr->right->value, ctx->currentfunc);
             if (!vs)
             {
                 fprintf(stderr, "Code generation error in file %s line %d: Undeclared variable %s\n",
