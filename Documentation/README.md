@@ -25,6 +25,8 @@ Type Checker has been implemented. Run ```./mycc -3 input_filename``` to run the
 ## Phase 5
 Code Generator has been implemented. Run ```./mycc -4 input_filename``` to run the type checker.
 
+## Phase 6
+Code Generator - Statements and Control Flow has been implemented. Run ```./mycc -5 input_filename``` to run the type checker.
 
 ## Source Files
 1. main.c: Contains the main logic for the compiler. Handles command-line
@@ -42,4 +44,4 @@ arguments and displays version information.
 
 
 ## High-Level Overview
-The compiler is currently in Phase 45 By providing an input file  we can have the codegenerator generate the parsed code and get the appropriate output into an output file.
+The compiler is currently in Phase 6. By providing an input file  we can have the codegenerator generate the parsed code and get the appropriate output into an output file.
