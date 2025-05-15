@@ -122,6 +122,8 @@ bool can_widen(const Type *from, const Type *to)
         return true;
     if ((from->base == BASE_CHAR || from->base == BASE_INT) && to->base == BASE_FLOAT)
         return true;
+    if (from->base == BASE_INT && to->base == BASE_CHAR)
+        return true;
     return false;
 }
 
@@ -849,7 +851,7 @@ Expression *parse_unary(lexer *L, Function *currentFunc)
     if (L->current.ID == TOKEN_LPAREN)
     {
         getNextToken(L);
-        
+
         if (L->current.ID == TOKEN_IDENTIFIER || L->current.ID == TOKEN_TYPE)
         {
             char typeName[64];

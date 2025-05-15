@@ -210,16 +210,51 @@ static void emit_function(CodegenContext *ctx, Function *func)
     strcat(signature, get_jvm_type(&func->returnType));
 
     fprintf(ctx->output, ".method public static %s : %s\n", func->name, signature);
-    emit(ctx, ".code stack %d locals %d", ctx->maxstacksize < 4 ? 4 : ctx->maxstacksize, ctx->localcount);
+    emit(ctx, ".code stack %d locals %d", ctx->maxstacksize < 2 ? 2 : ctx->maxstacksize, ctx->localcount);
     emit_statement(ctx, func->body);
 
     if (func->returnType.base == BASE_VOID)
     {
         emit(ctx, "return");
     }
-
+    else
+    {
+        if (!ctx->indeadcode)
+        {
+            emit(ctx, "iconst_0");
+            emit(ctx, "ireturn");
+        }
+    }
     emit(ctx, ".end code");
     fprintf(ctx->output, ".end method\n\n");
+}
+
+static bool has_break_statement(Statement *stmt)
+{
+    if (!stmt)
+        return false;
+
+    switch (stmt->kind)
+    {
+    case STMT_BREAK:
+        return true;
+    case STMT_COMPOUND:
+        for (int i = 0; i < stmt->numStmts; i++)
+        {
+            if (has_break_statement(stmt->stmts[i]))
+                return true;
+        }
+        return false;
+    case STMT_IF:
+        return has_break_statement(stmt->u.ifstmt->thenstmt) ||
+               (stmt->u.ifstmt->elsestmt && has_break_statement(stmt->u.ifstmt->elsestmt));
+    case STMT_WHILE:
+    case STMT_DO:
+    case STMT_FOR:
+        return has_break_statement(stmt->u.forstmt->body); // Recurse into loop body
+    default:
+        return false; // Other statements (EXPR, RETURN, DECL, etc.) don’t contain break
+    }
 }
 
 static void emit_statement(CodegenContext *ctx, Statement *stmt)
@@ -274,13 +309,14 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
         }
         break;
     case STMT_IF:
+        emit(ctx, "; if statement at %s line %d", ctx->infilename, stmt->lineno);
         emit_expression(ctx, stmt->u.ifstmt->condition);
         int label_else = ctx->labelcount++;
-        int label_end = ctx->labelcount++;
         emit(ctx, "ifeq L%d", label_else);
         emit_statement(ctx, stmt->u.ifstmt->thenstmt);
         if (stmt->u.ifstmt->elsestmt)
         {
+            int label_end = ctx->labelcount++;
             emit(ctx, "goto L%d", label_end);
             emit(ctx, "L%d:", label_else);
             emit_statement(ctx, stmt->u.ifstmt->elsestmt);
@@ -296,7 +332,7 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
         int old_end = ctx->curloopend;
         bool old_in_loop = ctx->inloop;
         int label_start = ctx->labelcount++;
-        label_end = ctx->labelcount++;
+        int label_end = ctx->labelcount++;
         ctx->curloopstart = label_start;
         ctx->curloopend = label_end;
         ctx->inloop = true;
@@ -332,24 +368,30 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
         old_start = ctx->curloopstart;
         old_end = ctx->curloopend;
         old_in_loop = ctx->inloop;
-        label_start = ctx->labelcount++;
-        int label_update = ctx->labelcount++;
         label_end = ctx->labelcount++;
+        label_start = ctx->labelcount++;
         ctx->curloopstart = label_start;
         ctx->curloopend = label_end;
         ctx->inloop = true;
+
+        emit(ctx, "; begin for loop at %s line %d", ctx->infilename, stmt->lineno);
+        if (has_break_statement(stmt->u.forstmt->body))
+        {
+            emit(ctx, "; with break label");
+        }
         if (stmt->u.forstmt->init)
         {
+            emit(ctx, "; for initialization at %s line %d", ctx->infilename, stmt->lineno);
             emit_statement(ctx, stmt->u.forstmt->init);
         }
         emit(ctx, "L%d:", label_start);
+
         if (stmt->u.forstmt->condition)
         {
             emit_expression(ctx, stmt->u.forstmt->condition);
             emit(ctx, "ifeq L%d", label_end);
         }
         emit_statement(ctx, stmt->u.forstmt->body);
-        emit(ctx, "L%d:", label_update);
         if (stmt->u.forstmt->update)
         {
             emit_expression(ctx, stmt->u.forstmt->update);
@@ -358,8 +400,10 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
                 emit(ctx, "pop");
             }
         }
+        emit(ctx, "; empty for condition");
         emit(ctx, "goto L%d", label_start);
         emit(ctx, "L%d:", label_end);
+        emit(ctx, "; end for loop at %s line %d", ctx->infilename, stmt->lineno);
         ctx->curloopstart = old_start;
         ctx->curloopend = old_end;
         ctx->inloop = old_in_loop;
@@ -371,8 +415,8 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
                     ctx->infilename, stmt->lineno);
             exit(1);
         }
+        emit(ctx, "; break at %s line %d", ctx->infilename, stmt->lineno);
         emit(ctx, "goto L%d", ctx->curloopend);
-        ctx->indeadcode = true;
         break;
     case STMT_CONTINUE:
         if (!ctx->inloop)
@@ -382,7 +426,6 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
             exit(1);
         }
         emit(ctx, "goto L%d", ctx->curloopstart);
-        ctx->indeadcode = true;
         break;
     }
 }
@@ -532,13 +575,17 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
                     emit(ctx, "L%d:", ctx->labelcount++);
                     break;
                 case OP_GT:
-                    emit(ctx, "isub");
-                    emit(ctx, "ifgt L%d", ctx->labelcount);
-                    emit(ctx, "iconst_0");
-                    emit(ctx, "goto L%d", ctx->labelcount + 1);
-                    emit(ctx, "L%d:", ctx->labelcount++);
+                    emit_expression(ctx, expr->left);
+                    emit_expression(ctx, expr->right);
+                    ctx->stacksize -= 1;
+                    int label_false = ctx->labelcount++;
+                    emit(ctx, "if_icmple L%d", label_false);
                     emit(ctx, "iconst_1");
-                    emit(ctx, "L%d:", ctx->labelcount++);
+                    int label_end = ctx->labelcount++;
+                    emit(ctx, "goto L%d", label_end);
+                    emit(ctx, "L%d:", label_false);
+                    emit(ctx, "iconst_0");
+                    emit(ctx, "L%d:", label_end);
                     break;
                 case OP_GE:
                     emit(ctx, "isub");
@@ -632,8 +679,7 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
             }
             else
             {
-                emit(ctx, "dup");
-                ctx->stacksize++;
+
                 emit(ctx, "%sstore %d ; %s",
                      vs->type.base == BASE_FLOAT ? "f" : "i",
                      vs->localIndex, vs->name);
