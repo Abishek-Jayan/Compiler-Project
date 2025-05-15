@@ -11,7 +11,10 @@ typedef struct CodegenContext {
     int stacksize;
     int maxstacksize;
     bool indeadcode;
-    int labelcount; 
+    int labelcount;
+    bool inloop;
+    int curloopstart;
+    int curloopend;
     StructDef *structdefs; 
 } CodegenContext;
 

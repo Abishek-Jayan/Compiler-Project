@@ -14,6 +14,8 @@ void show_usage()
     fprintf(stderr, " -2: Phase 2 Parser Parsing \n");
     fprintf(stderr, " -3: Phase 3 Type Checking\n");
     fprintf(stderr, " -4: Phase 4 Code Generation\n");
+    fprintf(stderr, " -5: Phase 5 Code Generation - Statements and Control Flow\n");
+
 }
 
 void show_version()
@@ -22,7 +24,6 @@ void show_version()
     printf("Written by Abishek Jayan (abishekj@iastate.edu)\n");
     printf("Version 1.0, released 29 January 2025\n");
 }
-
 
 int main(int argc, char *argv[])
 {
@@ -143,17 +144,16 @@ int main(int argc, char *argv[])
         init_lexer(&L, infilename, outfilename);
         FILE *output = fopen(outfilename, "w");
 
-    
-        
         // Initialize symbol tables
-        
-        // Parse the program 
+
+        // Parse the program
         int stmtCount = 0;
         Statement **program = parse_program(&L, &stmtCount);
-        
-        for (int i = 0; i < stmtCount; i++) {
 
-            type_check_statement(program[i], infilename,output);
+        for (int i = 0; i < stmtCount; i++)
+        {
+
+            type_check_statement(program[i], infilename, output, false);
         }
         fclose(output);
         printf("Completed type checking. Check %s for details\n", outfilename);
@@ -189,18 +189,62 @@ int main(int argc, char *argv[])
         init_lexer(&L, infilename, outfilename);
         int stmtCount = 0;
         Statement **program = parse_program(&L, &stmtCount);
-        if (!program) {
+        if (!program)
+        {
             fprintf(stderr, "Parsing failed for %s\n", infilename);
             exit(1);
-        } else {
-            
+        }
+        else
+        {
+
             generate_code(program, stmtCount, infilename, outfilename);
             printf("Completed code generation. Check %s for details\n", outfilename);
         }
         free(outfilename);
     }
 
+    else if (strcmp(argv[1], "-5") == 0)
+    {
+        if (argc < 3)
+        {
+            fprintf(stderr, "Usage: %s <input file>\n", argv[0]);
+            exit(1);
+        }
+        char *infilename = argv[2];
+        FILE *input = fopen(argv[2], "r");
+        if (!input)
+        {
+            printf("Error: No such input file");
+            exit(1);
+        }
+        fclose(input);
+        char *truncated_infilename = malloc(strlen(infilename) - 1);
+        if (!truncated_infilename)
+        {
+            fprintf(stderr, "Failed to allocate memory for output file name");
+            exit(1);
+        }
+        strncpy(truncated_infilename, infilename, strlen(infilename) - 2);
+        char *outfilename = malloc(strlen(truncated_infilename) + strlen(".j") + 1);
+        snprintf(outfilename, strlen(truncated_infilename) + strlen(".j") + 1, "%s.j", truncated_infilename);
 
+        lexer L;
+        init_lexer(&L, infilename, outfilename);
+        int stmtCount = 0;
+        Statement **program = parse_program(&L, &stmtCount);
+        if (!program)
+        {
+            fprintf(stderr, "Parsing failed for %s\n", infilename);
+            exit(1);
+        }
+        else
+        {
+
+            generate_code(program, stmtCount, infilename, outfilename);
+            printf("Completed code generation. Check %s for details\n", outfilename);
+        }
+        free(outfilename);
+    }
     else
     {
         show_usage();

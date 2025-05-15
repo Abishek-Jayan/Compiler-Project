@@ -20,6 +20,11 @@ StructTable *struct_table = NULL;
 int size = 0;
 int capacity = 0;
 
+bool is_numeric_type(const Type *type)
+{
+    return type->base == BASE_CHAR || type->base == BASE_INT || type->base == BASE_FLOAT;
+}
+
 void append(StructTable **table, int *size, int *capacity, const char *key, const char *value)
 {
     if (*size >= *capacity)
@@ -170,7 +175,7 @@ void type_error(const char *filename, int lineno, const char *msg)
     exit(1);
 }
 
-/* Syntax error for parser */
+// Syntax error for parser
 void syntax_error(lexer *L, const char *expected)
 {
     fprintf(stderr, "Syntax error in file %s line %u: Expected %s, but saw ",
@@ -186,30 +191,31 @@ void add_variable(lexer *L, const char *name, Type type, bool isGlobal, Function
 {
     if (!isGlobal && currentFunc)
     {
-        VarSymbol *vs = currentFunc->locals;
-        while (vs)
+        VarSymbol *local_vs = currentFunc->locals;
+        local_vs = currentFunc->locals;
+        while (local_vs)
         {
-            if (strcmp(vs->name, name) == 0)
+            if (strcmp(local_vs->name, name) == 0)
             {
                 fprintf(stderr, "Error: Duplicate local variable '%s' in function '%s' at line %d\n",
                         name, currentFunc->name, L->lineno);
                 exit(1);
             }
-            vs = vs->next;
+            local_vs = local_vs->next;
         }
     }
     else if (isGlobal)
     {
-        VarSymbol *vs = varSymbols;
-        while (vs)
+        VarSymbol *global_vs = varSymbols;
+        while (global_vs)
         {
-            if (strcmp(vs->name, name) == 0)
+            if (strcmp(global_vs->name, name) == 0)
             {
                 fprintf(stderr, "Error: Duplicate global variable '%s' at line %d\n",
                         name, L->lineno);
                 exit(1);
             }
-            vs = vs->next;
+            global_vs = global_vs->next;
         }
     }
 
@@ -240,7 +246,7 @@ void add_variable(lexer *L, const char *name, Type type, bool isGlobal, Function
 }
 void add_struct(const char *name, bool isGlobal)
 {
-    StructDef *struc = my_malloc(sizeof(VarSymbol));
+    StructDef *struc = my_malloc(sizeof(StructDef));
     strncpy(struc->name, name, sizeof(struc->name) - 1);
     struc->isGlobal = isGlobal;
     struc->next = structSymbols;
@@ -659,20 +665,20 @@ Expression *parse_assignment(lexer *L, Function *currentFunc)
 // Parse ternary operator: cond ? expr : expr
 Expression *parse_ternary(lexer *L, Function *currentFunc)
 {
-    Expression *cond = parse_logicalOr(L,currentFunc);
+    Expression *cond = parse_logicalOr(L, currentFunc);
     if (L->current.ID == TOKEN_QUESTION)
     {
-        getNextToken(L); 
-        Expression *trueExpr = parse_assignment(L,currentFunc);
+        getNextToken(L);
+        Expression *trueExpr = parse_assignment(L, currentFunc);
         if (L->current.ID != TOKEN_COLON)
             syntax_error(L, "':' in ternary operator");
         getNextToken(L);
-        Expression *falseExpr = parse_assignment(L,currentFunc);
+        Expression *falseExpr = parse_assignment(L, currentFunc);
         Expression *node = my_malloc(sizeof(Expression));
         node->kind = EXPR_TERNARY;
         node->lineno = cond->lineno;
-        node->left = cond;  
-        node->right = NULL; 
+        node->left = cond;
+        node->right = NULL;
         node->numArgs = 0;
         node->args = my_malloc(2 * sizeof(Expression *));
         node->args[0] = trueExpr;
@@ -748,7 +754,7 @@ Expression *parse_equality(lexer *L, Function *currentFunc)
 // Parse relational operators: <, <=, >, >=
 Expression *parse_relational(lexer *L, Function *currentFunc)
 {
-    Expression *node = parse_additive(L,currentFunc);
+    Expression *node = parse_additive(L, currentFunc);
     while (L->current.ID == TOKEN_LESS || L->current.ID == TOKEN_LE ||
            L->current.ID == TOKEN_GREATER || L->current.ID == TOKEN_GE)
     {
@@ -763,7 +769,7 @@ Expression *parse_relational(lexer *L, Function *currentFunc)
         else
             oper = OP_GE;
         getNextToken(L);
-        Expression *right = parse_additive(L,currentFunc);
+        Expression *right = parse_additive(L, currentFunc);
         node = make_binary(node, oper, right, L->lineno);
         node->exprType.base = BASE_INT;
         node->exprType.isArray = false;
@@ -773,7 +779,7 @@ Expression *parse_relational(lexer *L, Function *currentFunc)
 }
 
 // Parse addition: left + right or left - right
-Expression *parse_additive(lexer *L,Function *currentFunc)
+Expression *parse_additive(lexer *L, Function *currentFunc)
 {
     Expression *node = parse_multiplicative(L, currentFunc);
     while (L->current.ID == TOKEN_PLUS || L->current.ID == TOKEN_MINUS)
@@ -781,16 +787,16 @@ Expression *parse_additive(lexer *L,Function *currentFunc)
 
         Operator oper = (L->current.ID == TOKEN_PLUS) ? OP_PLUS : OP_MINUS;
         getNextToken(L);
-        Expression *right = parse_multiplicative(L,currentFunc);
+        Expression *right = parse_multiplicative(L, currentFunc);
         node = make_binary(node, oper, right, L->lineno);
     }
     return node;
 }
 
 // Parse multiplication: left * right or left / right or left % right
-Expression *parse_multiplicative(lexer *L,Function *currentFunc)
+Expression *parse_multiplicative(lexer *L, Function *currentFunc)
 {
-    Expression *node = parse_unary(L,currentFunc);
+    Expression *node = parse_unary(L, currentFunc);
     while (L->current.ID == TOKEN_ASTERISK || L->current.ID == TOKEN_SLASH || L->current.ID == TOKEN_MOD)
     {
 
@@ -802,47 +808,48 @@ Expression *parse_multiplicative(lexer *L,Function *currentFunc)
         else
             oper = OP_MOD;
         getNextToken(L);
-        Expression *right = parse_unary(L,currentFunc);
+        Expression *right = parse_unary(L, currentFunc);
         node = make_binary(node, oper, right, L->lineno);
     }
     return node;
 }
 
-Expression *parse_unary(lexer *L,Function *currentFunc)
+Expression *parse_unary(lexer *L, Function *currentFunc)
 {
     if (L->current.ID == TOKEN_MINUS)
     {
         getNextToken(L);
-        Expression *operand = parse_unary(L,currentFunc);
+        Expression *operand = parse_unary(L, currentFunc);
         return make_unary(OP_NEG, operand, L->lineno);
     }
     if (L->current.ID == TOKEN_EXCLAMATION)
     {
         getNextToken(L);
-        Expression *operand = parse_unary(L,currentFunc);
+        Expression *operand = parse_unary(L, currentFunc);
         return make_unary(OP_NOT, operand, L->lineno);
     }
     if (L->current.ID == TOKEN_INC) // Handle ++
     {
         getNextToken(L);
-        Expression *operand = parse_unary(L,currentFunc);
+        Expression *operand = parse_unary(L, currentFunc);
         return make_unary(OP_INC, operand, L->lineno);
     }
     if (L->current.ID == TOKEN_TILDE)
     {
         getNextToken(L);
-        Expression *operand = parse_unary(L,currentFunc);
+        Expression *operand = parse_unary(L, currentFunc);
         return make_unary(OP_TILDE, operand, L->lineno);
     }
     if (L->current.ID == TOKEN_DEC) // Handle --
     {
         getNextToken(L);
-        Expression *operand = parse_unary(L,currentFunc);
+        Expression *operand = parse_unary(L, currentFunc);
         return make_unary(OP_DEC, operand, L->lineno);
     }
     if (L->current.ID == TOKEN_LPAREN)
     {
         getNextToken(L);
+        
         if (L->current.ID == TOKEN_IDENTIFIER || L->current.ID == TOKEN_TYPE)
         {
             char typeName[64];
@@ -878,19 +885,19 @@ Expression *parse_unary(lexer *L,Function *currentFunc)
             if (L->current.ID != TOKEN_RPAREN)
                 syntax_error(L, "')' after cast type");
             getNextToken(L);
-            Expression *expr = parse_unary(L,currentFunc);
+            Expression *expr = parse_unary(L, currentFunc);
             return make_cast(castType, expr, L->lineno);
         }
         else
         {
-            Expression *expr = parse_assignment(L,currentFunc);
+            Expression *expr = parse_assignment(L, currentFunc);
             if (L->current.ID != TOKEN_RPAREN)
                 syntax_error(L, "')'");
             getNextToken(L);
             return expr;
         }
     }
-    return parse_primary(L,currentFunc);
+    return parse_primary(L, currentFunc);
 }
 
 Expression *parse_primary(lexer *L, Function *currentFunc)
@@ -900,7 +907,7 @@ Expression *parse_primary(lexer *L, Function *currentFunc)
     if (L->current.ID == TOKEN_LPAREN)
     {
         getNextToken(L);
-        node = parse_assignment(L,currentFunc);
+        node = parse_assignment(L, currentFunc);
         if (L->current.ID != TOKEN_RPAREN)
             syntax_error(L, "')'");
         getNextToken(L);
@@ -910,8 +917,8 @@ Expression *parse_primary(lexer *L, Function *currentFunc)
     {
         node = make_literal(L->current.attrb,
                             (L->current.ID == TOKEN_INT) ? (Type){BASE_INT, false, false, "", L->lineno} : (L->current.ID == TOKEN_REAL) ? (Type){BASE_FLOAT, false, false, "", L->lineno}
-                                                                                            : (L->current.ID == TOKEN_CHAR)   ? (Type){BASE_CHAR, false, false, "", L->lineno}
-                                                                                                                              : (Type){BASE_CHAR, true, true, "", L->lineno},
+                                                                                                       : (L->current.ID == TOKEN_CHAR)   ? (Type){BASE_CHAR, false, false, "", L->lineno}
+                                                                                                                                         : (Type){BASE_CHAR, true, true, "", L->lineno},
                             L->lineno);
         getNextToken(L);
     }
@@ -923,7 +930,7 @@ Expression *parse_primary(lexer *L, Function *currentFunc)
         while (L->current.ID == TOKEN_LBRACKET)
         {
             getNextToken(L);
-            Expression *indexExpr = parse_assignment(L,currentFunc);
+            Expression *indexExpr = parse_assignment(L, currentFunc);
             if (L->current.ID != TOKEN_RBRACKET)
                 syntax_error(L, "']'");
             getNextToken(L);
@@ -939,7 +946,7 @@ Expression *parse_primary(lexer *L, Function *currentFunc)
                 args = my_malloc(10 * sizeof(Expression *));
                 while (1)
                 {
-                    args[numArgs++] = parse_assignment(L,currentFunc);
+                    args[numArgs++] = parse_assignment(L, currentFunc);
                     if (L->current.ID == TOKEN_COMMA)
                     {
                         getNextToken(L);
@@ -989,7 +996,6 @@ Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal, boo
     Declaration *decl = &stmt->u.decl;
     memset(decl, 0, sizeof(Declaration));
 
-    // Optional const modifier
     token t = (buf_pos < buf->count) ? buf->tokens[buf_pos++] : L->current;
 
     // Parse type
@@ -1044,26 +1050,24 @@ Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal, boo
             syntax_error(L, "variable name");
         strncpy(decl->name, t.attrb, sizeof(decl->name) - 1);
     }
-    // Check for array declaration
     if (L->current.ID == TOKEN_LBRACKET)
     {
-        getNextToken(L); // consume '['
+        getNextToken(L);
         while (L->current.ID != TOKEN_RBRACKET && L->current.ID != END)
             getNextToken(L);
 
         if (L->current.ID != TOKEN_RBRACKET)
             syntax_error(L, "']'");
-        getNextToken(L); // consume ']'
+        getNextToken(L);
         type.isArray = true;
     }
     type.lineDeclared = L->lineno;
     decl->declType = type;
-
     add_variable(L, decl->name, type, isGlobal, currentFunc);
     if (L->current.ID == TOKEN_EQUAL)
     {
-        getNextToken(L); // consume '='
-        decl->init = parse_assignment(L,currentFunc);
+        getNextToken(L);
+        decl->init = parse_assignment(L, currentFunc);
         decl->initialized = true;
         if (!equal_types(&decl->declType, &decl->init->exprType))
         {
@@ -1101,7 +1105,37 @@ Statement *parser_statement(lexer *L, LookaheadBuffer *buf, bool isGlobal, bool 
             return stmt;
         }
     }
-    if (L->current.ID == TOKEN_RETURN)
+    if (L->current.ID == TOKEN_IF)
+    {
+        stmt = parse_if(L, currentFunc);
+        return stmt;
+    }
+    else if (L->current.ID == TOKEN_WHILE)
+    {
+        stmt = parse_while(L, currentFunc);
+        return stmt;
+    }
+    else if (L->current.ID == TOKEN_DO)
+    {
+        stmt = parse_do(L, currentFunc);
+        return stmt;
+    }
+    else if (L->current.ID == TOKEN_FOR)
+    {
+        stmt = parse_for(L, currentFunc);
+        return stmt;
+    }
+    else if (L->current.ID == TOKEN_BREAK)
+    {
+        stmt = parse_break(L);
+        return stmt;
+    }
+    else if (L->current.ID == TOKEN_CONTINUE)
+    {
+        stmt = parse_continue(L);
+        return stmt;
+    }
+    else if (L->current.ID == TOKEN_RETURN)
     {
         stmt = my_malloc(sizeof(Statement));
         stmt->kind = STMT_RETURN;
@@ -1119,7 +1153,7 @@ Statement *parser_statement(lexer *L, LookaheadBuffer *buf, bool isGlobal, bool 
         return stmt;
     }
 
-    if (L->current.ID == TOKEN_LBRACE)
+    else if (L->current.ID == TOKEN_LBRACE)
     {
         return parse_compound(L, currentFunc);
     }
@@ -1134,12 +1168,197 @@ Statement *parser_statement(lexer *L, LookaheadBuffer *buf, bool isGlobal, bool 
     return stmt;
 }
 
+Statement *parse_if(lexer *L, Function *currentFunc)
+{
+
+    if (L->current.ID != TOKEN_IF)
+        syntax_error(L, "if");
+    int lineno = L->lineno;
+    getNextToken(L);
+    if (L->current.ID != TOKEN_LPAREN)
+        syntax_error(L, "'('");
+    getNextToken(L);
+    Expression *condition = parse_assignment(L, currentFunc);
+    if (L->current.ID != TOKEN_RPAREN)
+        syntax_error(L, "')'");
+    getNextToken(L);
+    Statement *ifbody = parser_statement(L, NULL, false, false, currentFunc);
+    Statement *elsestmt = NULL;
+    if (L->current.ID == TOKEN_ELSE)
+    {
+        getNextToken(L);
+        elsestmt = parser_statement(L, NULL, false, false, currentFunc);
+    }
+    Statement *stmt = my_malloc(sizeof(Statement));
+    stmt->kind = STMT_IF;
+    stmt->lineno = lineno;
+    stmt->u.ifstmt = my_malloc(sizeof(IfStmt));
+    stmt->u.ifstmt->condition = condition;
+    stmt->u.ifstmt->thenstmt = ifbody;
+    stmt->u.ifstmt->elsestmt = elsestmt;
+    stmt->numStmts = 0;
+    stmt->stmts = NULL;
+    return stmt;
+}
+
+Statement *parse_while(lexer *L, Function *currentFunc)
+{
+    if (L->current.ID != TOKEN_WHILE)
+        syntax_error(L, "while");
+    int lineno = L->lineno;
+    getNextToken(L);
+    if (L->current.ID != TOKEN_LPAREN)
+        syntax_error(L, "'('");
+    getNextToken(L);
+    Expression *condition = parse_assignment(L, currentFunc);
+    if (L->current.ID != TOKEN_RPAREN)
+        syntax_error(L, "')'");
+    getNextToken(L);
+    Statement *body = parser_statement(L, NULL, false, false, currentFunc);
+    Statement *stmt = my_malloc(sizeof(Statement));
+    stmt->kind = STMT_WHILE;
+    stmt->lineno = lineno;
+    stmt->u.whilestmt = my_malloc(sizeof(WhileStmt));
+    stmt->u.whilestmt->condition = condition;
+    stmt->u.whilestmt->body = body;
+    stmt->numStmts = 0;
+    stmt->stmts = NULL;
+    return stmt;
+}
+
+Statement *parse_do(lexer *L, Function *currentFunc)
+{
+    if (L->current.ID != TOKEN_DO)
+        syntax_error(L, "do");
+    int lineno = L->lineno;
+    getNextToken(L);
+    Statement *body = parser_statement(L, NULL, false, false, currentFunc);
+    if (L->current.ID != TOKEN_WHILE)
+        syntax_error(L, "while");
+    getNextToken(L);
+    if (L->current.ID != TOKEN_LPAREN)
+        syntax_error(L, "'('");
+    getNextToken(L);
+    Expression *condition = parse_assignment(L, currentFunc);
+    if (L->current.ID != TOKEN_RPAREN)
+        syntax_error(L, "')'");
+    getNextToken(L);
+    if (L->current.ID != TOKEN_SEMICOLON)
+        syntax_error(L, "';'");
+    getNextToken(L);
+    Statement *stmt = my_malloc(sizeof(Statement));
+    stmt->kind = STMT_DO;
+    stmt->lineno = lineno;
+    stmt->u.dostmt = my_malloc(sizeof(DoStmt));
+    stmt->u.dostmt->body = body;
+    stmt->u.dostmt->condition = condition;
+    stmt->numStmts = 0;
+    stmt->stmts = NULL;
+    return stmt;
+}
+
+Statement *parse_for(lexer *L, Function *currentFunc)
+{
+    if (L->current.ID != TOKEN_FOR)
+        syntax_error(L, "for");
+    int lineno = L->lineno;
+    getNextToken(L);
+    if (L->current.ID != TOKEN_LPAREN)
+        syntax_error(L, "'('");
+    getNextToken(L);
+    Statement *init = NULL;
+    if (L->current.ID != TOKEN_SEMICOLON)
+    {
+        LookaheadBuffer buf;
+        init_lookahead(&buf);
+        push_token(&buf, L->current);
+        if (L->current.ID == TOKEN_TYPE || L->current.ID == TOKEN_STRUCT)
+        {
+            getNextToken(L);
+            push_token(&buf, L->current);
+            init = parser_declaration(L, &buf, false, false, currentFunc);
+        }
+        else
+        {
+            init = parser_statement(L, NULL, false, false, currentFunc);
+        }
+    }
+
+    getNextToken(L);
+
+    Expression *condition = NULL;
+    if (L->current.ID != TOKEN_SEMICOLON)
+    {
+        condition = parse_assignment(L, currentFunc);
+    }
+    if (L->current.ID != TOKEN_SEMICOLON)
+        syntax_error(L, "';'");
+    getNextToken(L);
+    Expression *update = NULL;
+
+    if (L->current.ID != TOKEN_RPAREN)
+    {
+        update = parse_assignment(L, currentFunc);
+    }
+
+    if (L->current.ID != TOKEN_RPAREN)
+        syntax_error(L, "')'");
+    getNextToken(L);
+    Statement *body = parse_compound(L, currentFunc);
+    Statement *stmt = my_malloc(sizeof(Statement));
+    stmt->kind = STMT_FOR;
+    stmt->lineno = lineno;
+    stmt->u.forstmt = my_malloc(sizeof(ForStmt));
+    stmt->u.forstmt->init = init;
+    stmt->u.forstmt->condition = condition;
+    stmt->u.forstmt->update = update;
+    stmt->u.forstmt->body = body;
+    stmt->numStmts = 0;
+    stmt->stmts = NULL;
+    return stmt;
+}
+
+Statement *parse_break(lexer *L)
+{
+    if (L->current.ID != TOKEN_BREAK)
+        syntax_error(L, "break");
+    int lineno = L->lineno;
+    getNextToken(L);
+    if (L->current.ID != TOKEN_SEMICOLON)
+        syntax_error(L, "';'");
+    getNextToken(L);
+    Statement *stmt = my_malloc(sizeof(Statement));
+    stmt->kind = STMT_BREAK;
+    stmt->lineno = lineno;
+    stmt->numStmts = 0;
+    stmt->stmts = NULL;
+    return stmt;
+}
+
+Statement *parse_continue(lexer *L)
+{
+    if (L->current.ID != TOKEN_CONTINUE)
+        syntax_error(L, "continue");
+    int lineno = L->lineno;
+    getNextToken(L);
+    if (L->current.ID != TOKEN_SEMICOLON)
+        syntax_error(L, "';'");
+    getNextToken(L);
+    Statement *stmt = my_malloc(sizeof(Statement));
+    stmt->kind = STMT_CONTINUE;
+    stmt->lineno = lineno;
+    stmt->numStmts = 0;
+    stmt->stmts = NULL;
+    return stmt;
+}
+
 Statement *parse_compound(lexer *L, Function *currentFunc)
 {
     if (L->current.ID != TOKEN_LBRACE)
         syntax_error(L, "'{'");
     getNextToken(L);
     Statement **stmts = my_malloc(100 * sizeof(Statement *));
+    int lineno = L->lineno;
     int count = 0;
     LookaheadBuffer buf;
     init_lookahead(&buf);
@@ -1149,6 +1368,7 @@ Statement *parse_compound(lexer *L, Function *currentFunc)
     token save_struct;
     while (L->current.ID != TOKEN_RBRACE)
     {
+
         clear_lookahead(&buf);
         isConst = false;
         isStruct = false;
@@ -1176,8 +1396,10 @@ Statement *parse_compound(lexer *L, Function *currentFunc)
                 isConst = true;
                 getNextToken(L);
             }
+
             if (L->current.ID == TOKEN_IDENTIFIER)
             {
+
                 push_token(&buf, L->current);
                 getNextToken(L);
             }
@@ -1196,6 +1418,7 @@ Statement *parse_compound(lexer *L, Function *currentFunc)
         }
         else
         {
+            bool flag = true;
             do
             {
                 if (isStruct)
@@ -1208,11 +1431,30 @@ Statement *parse_compound(lexer *L, Function *currentFunc)
                 {
 
                     if (((buf.tokens[0].ID == TOKEN_TYPE || buf.tokens[0].ID == TOKEN_STRUCT) && buf.tokens[1].ID == TOKEN_IDENTIFIER))
-                        stmts[count++] = parser_statement(L, &buf, false, isConst,currentFunc);
+                        stmts[count++] = parser_statement(L, &buf, false, isConst, currentFunc);
                     if (L->current.ID == TOKEN_IDENTIFIER)
+                    {
+
                         buf.tokens[1] = L->current;
+                        getNextToken(L);
+                        if (L->current.ID == TOKEN_EQUAL)
+                        {
+                            stmts[count++] = parser_statement(L, &buf, false, isConst, currentFunc);
+                            getNextToken(L);
+                            flag = false;
+                        }
+                        else
+                        {
+                            flag = false;
+                            if (L->current.ID == TOKEN_LBRACKET || L->current.ID == TOKEN_LPAREN || L->current.ID == TOKEN_SEMICOLON)
+                                stmts[count++] = parser_statement(L, &buf, false, isConst, currentFunc);
+                        }
+                    }
                 }
-                stmts[count++] = parser_statement(L, &buf, false, isConst,currentFunc);
+                if (flag)
+                {
+                    stmts[count++] = parser_statement(L, &buf, false, isConst, currentFunc);
+                }
 
             } while (L->current.ID == TOKEN_COMMA);
         }
@@ -1228,7 +1470,7 @@ Statement *parse_compound(lexer *L, Function *currentFunc)
     getNextToken(L);
     Statement *compound = my_malloc(sizeof(Statement));
     compound->kind = STMT_COMPOUND;
-    compound->lineno = L->lineno;
+    compound->lineno = lineno;
     compound->numStmts = count;
     compound->stmts = stmts;
     return compound;
@@ -1308,14 +1550,13 @@ Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf)
     {
 
         clear_lookahead(&buff);
-        push_token(&buff, L->current);
-
         bool pConst = false;
-        if (L->current.ID == TOKEN_IDENTIFIER && strcmp(L->current.attrb, "const") == 0)
+        if (L->current.ID == TOKEN_CONST)
         {
             pConst = true;
             getNextToken(L);
         }
+        push_token(&buff, L->current);
         Type pType = {0};
         if (buff.count > 0 && buff.tokens[0].ID != TOKEN_TYPE)
             syntax_error(L, "parameter type");
@@ -1348,7 +1589,16 @@ Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf)
         char paramName[64];
         strncpy(paramName, L->current.attrb, sizeof(paramName) - 1);
         getNextToken(L);
-
+        if (L->current.ID == TOKEN_LBRACKET)
+        {
+            getNextToken(L);
+            while (L->current.ID != TOKEN_RBRACKET && L->current.ID != END)
+                getNextToken(L);
+            if (L->current.ID != TOKEN_RBRACKET)
+                syntax_error(L, "']'");
+            getNextToken(L);
+            pType.isArray = true;
+        }
         VarSymbol *vs = my_malloc(sizeof(VarSymbol));
         strncpy(vs->name, paramName, sizeof(vs->name) - 1);
         vs->type = pType;
@@ -1654,7 +1904,7 @@ Statement **parse_program(lexer *L, int *stmtCount)
     return stmts;
 }
 
-void type_check_expression(Expression *expr, const char *filename, FILE *output,Function *currentFunc)
+void type_check_expression(Expression *expr, const char *filename, FILE *output, Function *currentFunc)
 {
     if (!expr)
         return;
@@ -1664,7 +1914,7 @@ void type_check_expression(Expression *expr, const char *filename, FILE *output,
         break;
     case EXPR_IDENTIFIER:
     {
-        VarSymbol *vs = lookup_variable(expr->value,currentFunc);
+        VarSymbol *vs = lookup_variable(expr->value, currentFunc);
         if (vs)
         {
             expr->exprType = vs->type;
@@ -1720,7 +1970,7 @@ void type_check_expression(Expression *expr, const char *filename, FILE *output,
                 snprintf(msg, sizeof(msg), "Invalid operation: ! %s", typeStr);
                 type_error(filename, expr->lineno, msg);
             }
-            expr->exprType = (Type){BASE_INT, false, false, "",expr->lineno};
+            expr->exprType = (Type){BASE_INT, false, false, "", expr->lineno};
         }
         else if (expr->op == OP_INC || expr->op == OP_DEC)
         {
@@ -1748,8 +1998,8 @@ void type_check_expression(Expression *expr, const char *filename, FILE *output,
     break;
     case EXPR_BINARY:
     {
-        type_check_expression(expr->left, filename, output,currentFunc);
-        type_check_expression(expr->right, filename, output,currentFunc);
+        type_check_expression(expr->left, filename, output, currentFunc);
+        type_check_expression(expr->right, filename, output, currentFunc);
         Type leftType = expr->left->exprType;
         Type rightType = expr->right->exprType;
         if (expr->op == OP_PLUS || expr->op == OP_MINUS ||
@@ -1789,18 +2039,18 @@ void type_check_expression(Expression *expr, const char *filename, FILE *output,
                  expr->op == OP_LT || expr->op == OP_LE ||
                  expr->op == OP_GT || expr->op == OP_GE)
         {
-            expr->exprType = (Type){BASE_INT, false, false, "",expr->lineno};
+            expr->exprType = (Type){BASE_INT, false, false, "", expr->lineno};
         }
         else if (expr->op == OP_AND || expr->op == OP_OR)
         {
-            expr->exprType = (Type){BASE_INT, false, false, "",expr->lineno};
+            expr->exprType = (Type){BASE_INT, false, false, "", expr->lineno};
         }
     }
     break;
     case EXPR_ASSIGN:
     {
-        type_check_expression(expr->left, filename, output,currentFunc);
-        type_check_expression(expr->right, filename, output,currentFunc);
+        type_check_expression(expr->left, filename, output, currentFunc);
+        type_check_expression(expr->right, filename, output, currentFunc);
         Type leftType = expr->left->exprType;
         Type rightType = expr->right->exprType;
         if (!equal_types(&leftType, &rightType))
@@ -1824,16 +2074,16 @@ void type_check_expression(Expression *expr, const char *filename, FILE *output,
     break;
     case EXPR_CALL:
     {
-        type_check_expression(expr->left, filename, output,currentFunc);
+        type_check_expression(expr->left, filename, output, currentFunc);
         for (int i = 0; i < expr->numArgs; i++)
-            type_check_expression(expr->args[i], filename, output,currentFunc);
+            type_check_expression(expr->args[i], filename, output, currentFunc);
         expr->exprType = expr->left->exprType;
     }
     break;
     case EXPR_INDEX:
     {
-        type_check_expression(expr->left, filename, output,currentFunc);
-        type_check_expression(expr->right, filename, output,currentFunc);
+        type_check_expression(expr->left, filename, output, currentFunc);
+        type_check_expression(expr->right, filename, output, currentFunc);
         expr->exprType = expr->left->exprType;
         expr->exprType.isArray = false;
     }
@@ -1853,13 +2103,13 @@ void type_check_expression(Expression *expr, const char *filename, FILE *output,
     break;
     case EXPR_CAST:
     {
-        type_check_expression(expr->left, filename, output,currentFunc);
+        type_check_expression(expr->left, filename, output, currentFunc);
     }
     break;
     }
 }
 
-void type_check_statement(Statement *stmt, const char *filename, FILE *output)
+void type_check_statement(Statement *stmt, const char *filename, FILE *output, bool inLoop)
 {
     if (!stmt)
         return;
@@ -1895,7 +2145,7 @@ void type_check_statement(Statement *stmt, const char *filename, FILE *output)
         }
         Type expectedType = func->returnType;
 
-        Type actualType = stmt->u.expr ? stmt->u.expr->exprType : (Type){BASE_VOID, false, false, "",stmt->u.expr->lineno};
+        Type actualType = stmt->u.expr ? stmt->u.expr->exprType : (Type){BASE_VOID, false, false, "", stmt->lineno};
         if (!equal_types(&actualType, &expectedType))
         {
             char actualStr[52], expectedStr[52];
@@ -1910,7 +2160,77 @@ void type_check_statement(Statement *stmt, const char *filename, FILE *output)
         break;
     case STMT_COMPOUND:
         for (int i = 0; i < stmt->numStmts; i++)
-            type_check_statement(stmt->stmts[i], filename, output);
+            type_check_statement(stmt->stmts[i], filename, output, inLoop);
+        break;
+
+    case STMT_IF:
+        type_check_expression(stmt->u.ifstmt->condition, filename, output, func);
+        if (!is_numeric_type(&stmt->u.ifstmt->condition->exprType))
+        {
+            char typeStr[128];
+            format_type(&stmt->u.ifstmt->condition->exprType, typeStr, sizeof(typeStr));
+            char msg[256];
+            snprintf(msg, sizeof(msg), "If condition must be numeric, was %s", typeStr);
+            type_error(filename, stmt->lineno, msg);
+        }
+        type_check_statement(stmt->u.ifstmt->thenstmt, filename, output, inLoop);
+        if (stmt->u.ifstmt->elsestmt)
+            type_check_statement(stmt->u.ifstmt->elsestmt, filename, output, inLoop);
+        break;
+    case STMT_WHILE:
+        type_check_expression(stmt->u.whilestmt->condition, filename, output, func);
+        if (!is_numeric_type(&stmt->u.whilestmt->condition->exprType))
+        {
+            char typeStr[128];
+            format_type(&stmt->u.whilestmt->condition->exprType, typeStr, sizeof(typeStr));
+            char msg[256];
+            snprintf(msg, sizeof(msg), "While condition must be numeric, was %s", typeStr);
+            type_error(filename, stmt->lineno, msg);
+        }
+        type_check_statement(stmt->u.whilestmt->body, filename, output, true);
+        break;
+    case STMT_DO:
+        type_check_expression(stmt->u.dostmt->condition, filename, output, func);
+        if (!is_numeric_type(&stmt->u.dostmt->condition->exprType))
+        {
+            char typeStr[128];
+            format_type(&stmt->u.dostmt->condition->exprType, typeStr, sizeof(typeStr));
+            char msg[256];
+            snprintf(msg, sizeof(msg), "Do-while condition must be numeric, was %s", typeStr);
+            type_error(filename, stmt->lineno, msg);
+        }
+        type_check_statement(stmt->u.dostmt->body, filename, output, true);
+        break;
+    case STMT_FOR:
+        if (stmt->u.forstmt->init)
+            type_check_statement(stmt->u.forstmt->init, filename, output, inLoop);
+        if (stmt->u.forstmt->condition)
+        {
+            type_check_expression(stmt->u.forstmt->condition, filename, output, func);
+            if (!is_numeric_type(&stmt->u.forstmt->condition->exprType))
+            {
+                char typeStr[128];
+                format_type(&stmt->u.forstmt->condition->exprType, typeStr, sizeof(typeStr));
+                char msg[256];
+                snprintf(msg, sizeof(msg), "For condition must be numeric, was %s", typeStr);
+                type_error(filename, stmt->lineno, msg);
+            }
+        }
+        if (stmt->u.forstmt->update)
+            type_check_expression(stmt->u.forstmt->update, filename, output, func);
+        type_check_statement(stmt->u.forstmt->body, filename, output, true);
+        break;
+    case STMT_BREAK:
+        if (!inLoop)
+        {
+            type_error(filename, stmt->lineno, "break not inside a loop");
+        }
+        break;
+    case STMT_CONTINUE:
+        if (!inLoop)
+        {
+            type_error(filename, stmt->lineno, "continue not inside a loop");
+        }
         break;
     }
 }
@@ -1918,10 +2238,10 @@ void type_check_statement(Statement *stmt, const char *filename, FILE *output)
 void init_symbol_tables()
 {
     // Predeclare lib440 functions
-    Type voidType = {BASE_VOID, false, false, "",0};
-    Type intType = {BASE_INT, false, false, "",0};
-    Type floatType = {BASE_FLOAT, false, false, "",0};
-    Type charArrayType = {BASE_CHAR, false, true, "",0};
+    Type voidType = {BASE_VOID, false, false, "", 0};
+    Type intType = {BASE_INT, false, false, "", 0};
+    Type floatType = {BASE_FLOAT, false, false, "", 0};
+    Type charArrayType = {BASE_CHAR, false, true, "", 0};
 
     // putint(int) -> void
     VarSymbol *putint_param = my_malloc(sizeof(VarSymbol));
