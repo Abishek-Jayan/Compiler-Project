@@ -20,8 +20,8 @@ StructTable *struct_table = NULL;
 int size = 0;
 int capacity = 0;
 
-
-bool is_numeric_type(const Type *type) {
+bool is_numeric_type(const Type *type)
+{
     return type->base == BASE_CHAR || type->base == BASE_INT || type->base == BASE_FLOAT;
 }
 
@@ -175,7 +175,7 @@ void type_error(const char *filename, int lineno, const char *msg)
     exit(1);
 }
 
-/* Syntax error for parser */
+// Syntax error for parser
 void syntax_error(lexer *L, const char *expected)
 {
     fprintf(stderr, "Syntax error in file %s line %u: Expected %s, but saw ",
@@ -191,30 +191,31 @@ void add_variable(lexer *L, const char *name, Type type, bool isGlobal, Function
 {
     if (!isGlobal && currentFunc)
     {
-        VarSymbol *vs = currentFunc->locals;
-        while (vs)
+        VarSymbol *local_vs = currentFunc->locals;
+        local_vs = currentFunc->locals;
+        while (local_vs)
         {
-            if (strcmp(vs->name, name) == 0)
+            if (strcmp(local_vs->name, name) == 0)
             {
                 fprintf(stderr, "Error: Duplicate local variable '%s' in function '%s' at line %d\n",
                         name, currentFunc->name, L->lineno);
                 exit(1);
             }
-            vs = vs->next;
+            local_vs = local_vs->next;
         }
     }
     else if (isGlobal)
     {
-        VarSymbol *vs = varSymbols;
-        while (vs)
+        VarSymbol *global_vs = varSymbols;
+        while (global_vs)
         {
-            if (strcmp(vs->name, name) == 0)
+            if (strcmp(global_vs->name, name) == 0)
             {
                 fprintf(stderr, "Error: Duplicate global variable '%s' at line %d\n",
                         name, L->lineno);
                 exit(1);
             }
-            vs = vs->next;
+            global_vs = global_vs->next;
         }
     }
 
@@ -848,6 +849,7 @@ Expression *parse_unary(lexer *L, Function *currentFunc)
     if (L->current.ID == TOKEN_LPAREN)
     {
         getNextToken(L);
+        
         if (L->current.ID == TOKEN_IDENTIFIER || L->current.ID == TOKEN_TYPE)
         {
             char typeName[64];
@@ -994,7 +996,6 @@ Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal, boo
     Declaration *decl = &stmt->u.decl;
     memset(decl, 0, sizeof(Declaration));
 
-    // Optional const modifier
     token t = (buf_pos < buf->count) ? buf->tokens[buf_pos++] : L->current;
 
     // Parse type
@@ -1049,25 +1050,23 @@ Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal, boo
             syntax_error(L, "variable name");
         strncpy(decl->name, t.attrb, sizeof(decl->name) - 1);
     }
-    // Check for array declaration
     if (L->current.ID == TOKEN_LBRACKET)
     {
-        getNextToken(L); // consume '['
+        getNextToken(L);
         while (L->current.ID != TOKEN_RBRACKET && L->current.ID != END)
             getNextToken(L);
 
         if (L->current.ID != TOKEN_RBRACKET)
             syntax_error(L, "']'");
-        getNextToken(L); // consume ']'
+        getNextToken(L);
         type.isArray = true;
     }
     type.lineDeclared = L->lineno;
     decl->declType = type;
-
     add_variable(L, decl->name, type, isGlobal, currentFunc);
     if (L->current.ID == TOKEN_EQUAL)
     {
-        getNextToken(L); // consume '='
+        getNextToken(L);
         decl->init = parse_assignment(L, currentFunc);
         decl->initialized = true;
         if (!equal_types(&decl->declType, &decl->init->exprType))
@@ -1128,12 +1127,12 @@ Statement *parser_statement(lexer *L, LookaheadBuffer *buf, bool isGlobal, bool 
     }
     else if (L->current.ID == TOKEN_BREAK)
     {
-        stmt = parse_break(L, currentFunc);
+        stmt = parse_break(L);
         return stmt;
     }
     else if (L->current.ID == TOKEN_CONTINUE)
     {
-        stmt = parse_continue(L, currentFunc);
+        stmt = parse_continue(L);
         return stmt;
     }
     else if (L->current.ID == TOKEN_RETURN)
@@ -1193,6 +1192,7 @@ Statement *parse_if(lexer *L, Function *currentFunc)
     Statement *stmt = my_malloc(sizeof(Statement));
     stmt->kind = STMT_IF;
     stmt->lineno = lineno;
+    stmt->u.ifstmt = my_malloc(sizeof(IfStmt));
     stmt->u.ifstmt->condition = condition;
     stmt->u.ifstmt->thenstmt = ifbody;
     stmt->u.ifstmt->elsestmt = elsestmt;
@@ -1218,6 +1218,7 @@ Statement *parse_while(lexer *L, Function *currentFunc)
     Statement *stmt = my_malloc(sizeof(Statement));
     stmt->kind = STMT_WHILE;
     stmt->lineno = lineno;
+    stmt->u.whilestmt = my_malloc(sizeof(WhileStmt));
     stmt->u.whilestmt->condition = condition;
     stmt->u.whilestmt->body = body;
     stmt->numStmts = 0;
@@ -1248,6 +1249,7 @@ Statement *parse_do(lexer *L, Function *currentFunc)
     Statement *stmt = my_malloc(sizeof(Statement));
     stmt->kind = STMT_DO;
     stmt->lineno = lineno;
+    stmt->u.dostmt = my_malloc(sizeof(DoStmt));
     stmt->u.dostmt->body = body;
     stmt->u.dostmt->condition = condition;
     stmt->numStmts = 0;
@@ -1281,10 +1283,9 @@ Statement *parse_for(lexer *L, Function *currentFunc)
             init = parser_statement(L, NULL, false, false, currentFunc);
         }
     }
-    else
-    {
-        getNextToken(L);
-    }
+
+    getNextToken(L);
+
     Expression *condition = NULL;
     if (L->current.ID != TOKEN_SEMICOLON)
     {
@@ -1294,17 +1295,20 @@ Statement *parse_for(lexer *L, Function *currentFunc)
         syntax_error(L, "';'");
     getNextToken(L);
     Expression *update = NULL;
+
     if (L->current.ID != TOKEN_RPAREN)
     {
         update = parse_assignment(L, currentFunc);
     }
+
     if (L->current.ID != TOKEN_RPAREN)
         syntax_error(L, "')'");
     getNextToken(L);
-    Statement *body = parser_statement(L, NULL, false, false, currentFunc);
+    Statement *body = parse_compound(L, currentFunc);
     Statement *stmt = my_malloc(sizeof(Statement));
     stmt->kind = STMT_FOR;
     stmt->lineno = lineno;
+    stmt->u.forstmt = my_malloc(sizeof(ForStmt));
     stmt->u.forstmt->init = init;
     stmt->u.forstmt->condition = condition;
     stmt->u.forstmt->update = update;
@@ -1314,7 +1318,7 @@ Statement *parse_for(lexer *L, Function *currentFunc)
     return stmt;
 }
 
-Statement *parse_break(lexer *L, Function *currentFunc)
+Statement *parse_break(lexer *L)
 {
     if (L->current.ID != TOKEN_BREAK)
         syntax_error(L, "break");
@@ -1322,6 +1326,7 @@ Statement *parse_break(lexer *L, Function *currentFunc)
     getNextToken(L);
     if (L->current.ID != TOKEN_SEMICOLON)
         syntax_error(L, "';'");
+    getNextToken(L);
     Statement *stmt = my_malloc(sizeof(Statement));
     stmt->kind = STMT_BREAK;
     stmt->lineno = lineno;
@@ -1330,7 +1335,7 @@ Statement *parse_break(lexer *L, Function *currentFunc)
     return stmt;
 }
 
-Statement *parse_continue(lexer *L, Function *currentFunc)
+Statement *parse_continue(lexer *L)
 {
     if (L->current.ID != TOKEN_CONTINUE)
         syntax_error(L, "continue");
@@ -1353,6 +1358,7 @@ Statement *parse_compound(lexer *L, Function *currentFunc)
         syntax_error(L, "'{'");
     getNextToken(L);
     Statement **stmts = my_malloc(100 * sizeof(Statement *));
+    int lineno = L->lineno;
     int count = 0;
     LookaheadBuffer buf;
     init_lookahead(&buf);
@@ -1362,6 +1368,7 @@ Statement *parse_compound(lexer *L, Function *currentFunc)
     token save_struct;
     while (L->current.ID != TOKEN_RBRACE)
     {
+
         clear_lookahead(&buf);
         isConst = false;
         isStruct = false;
@@ -1389,8 +1396,10 @@ Statement *parse_compound(lexer *L, Function *currentFunc)
                 isConst = true;
                 getNextToken(L);
             }
+
             if (L->current.ID == TOKEN_IDENTIFIER)
             {
+
                 push_token(&buf, L->current);
                 getNextToken(L);
             }
@@ -1409,6 +1418,7 @@ Statement *parse_compound(lexer *L, Function *currentFunc)
         }
         else
         {
+            bool flag = true;
             do
             {
                 if (isStruct)
@@ -1423,9 +1433,28 @@ Statement *parse_compound(lexer *L, Function *currentFunc)
                     if (((buf.tokens[0].ID == TOKEN_TYPE || buf.tokens[0].ID == TOKEN_STRUCT) && buf.tokens[1].ID == TOKEN_IDENTIFIER))
                         stmts[count++] = parser_statement(L, &buf, false, isConst, currentFunc);
                     if (L->current.ID == TOKEN_IDENTIFIER)
+                    {
+
                         buf.tokens[1] = L->current;
+                        getNextToken(L);
+                        if (L->current.ID == TOKEN_EQUAL)
+                        {
+                            stmts[count++] = parser_statement(L, &buf, false, isConst, currentFunc);
+                            getNextToken(L);
+                            flag = false;
+                        }
+                        else
+                        {
+                            flag = false;
+                            if (L->current.ID == TOKEN_LBRACKET || L->current.ID == TOKEN_LPAREN || L->current.ID == TOKEN_SEMICOLON)
+                                stmts[count++] = parser_statement(L, &buf, false, isConst, currentFunc);
+                        }
+                    }
                 }
-                stmts[count++] = parser_statement(L, &buf, false, isConst, currentFunc);
+                if (flag)
+                {
+                    stmts[count++] = parser_statement(L, &buf, false, isConst, currentFunc);
+                }
 
             } while (L->current.ID == TOKEN_COMMA);
         }
@@ -1441,7 +1470,7 @@ Statement *parse_compound(lexer *L, Function *currentFunc)
     getNextToken(L);
     Statement *compound = my_malloc(sizeof(Statement));
     compound->kind = STMT_COMPOUND;
-    compound->lineno = L->lineno;
+    compound->lineno = lineno;
     compound->numStmts = count;
     compound->stmts = stmts;
     return compound;
@@ -1521,14 +1550,13 @@ Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf)
     {
 
         clear_lookahead(&buff);
-        push_token(&buff, L->current);
-
         bool pConst = false;
-        if (L->current.ID == TOKEN_IDENTIFIER && strcmp(L->current.attrb, "const") == 0)
+        if (L->current.ID == TOKEN_CONST)
         {
             pConst = true;
             getNextToken(L);
         }
+        push_token(&buff, L->current);
         Type pType = {0};
         if (buff.count > 0 && buff.tokens[0].ID != TOKEN_TYPE)
             syntax_error(L, "parameter type");
@@ -1561,7 +1589,16 @@ Statement *parse_function_declaration(lexer *L, LookaheadBuffer *buf)
         char paramName[64];
         strncpy(paramName, L->current.attrb, sizeof(paramName) - 1);
         getNextToken(L);
-
+        if (L->current.ID == TOKEN_LBRACKET)
+        {
+            getNextToken(L);
+            while (L->current.ID != TOKEN_RBRACKET && L->current.ID != END)
+                getNextToken(L);
+            if (L->current.ID != TOKEN_RBRACKET)
+                syntax_error(L, "']'");
+            getNextToken(L);
+            pType.isArray = true;
+        }
         VarSymbol *vs = my_malloc(sizeof(VarSymbol));
         strncpy(vs->name, paramName, sizeof(vs->name) - 1);
         vs->type = pType;
@@ -2108,7 +2145,7 @@ void type_check_statement(Statement *stmt, const char *filename, FILE *output, b
         }
         Type expectedType = func->returnType;
 
-        Type actualType = stmt->u.expr ? stmt->u.expr->exprType : (Type){BASE_VOID, false, false, "", stmt->u.expr->lineno};
+        Type actualType = stmt->u.expr ? stmt->u.expr->exprType : (Type){BASE_VOID, false, false, "", stmt->lineno};
         if (!equal_types(&actualType, &expectedType))
         {
             char actualStr[52], expectedStr[52];
