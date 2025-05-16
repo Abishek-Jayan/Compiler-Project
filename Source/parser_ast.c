@@ -1065,7 +1065,8 @@ Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal, boo
     }
     type.lineDeclared = L->lineno;
     decl->declType = type;
-    add_variable(L, decl->name, type, isGlobal, currentFunc);
+    if (!lookup_variable(decl->name,currentFunc))
+        add_variable(L, decl->name, type, isGlobal, currentFunc);
     if (L->current.ID == TOKEN_EQUAL)
     {
         getNextToken(L);
@@ -1093,9 +1094,13 @@ Statement *parser_declaration(lexer *L, LookaheadBuffer *buf, bool isGlobal, boo
 
 // A statement can be a declaration, an expression statement, or a return statement, etc.
 Statement *parser_statement(lexer *L, LookaheadBuffer *buf, bool isGlobal, bool isConst, Function *currentFunc)
-{
-    Statement *stmt = NULL;
+{   
+    if (L->current.ID == TOKEN_EQUAL && buf->count != 2)
+    {
+        buf->count = 2;
 
+    }
+    Statement *stmt = NULL;
     if (buf && buf->count > 0)
     {
         token t = buf->tokens[0];
@@ -1185,6 +1190,7 @@ Statement *parse_if(lexer *L, Function *currentFunc)
         syntax_error(L, "')'");
     getNextToken(L);
     Statement *ifbody = parser_statement(L, NULL, false, false, currentFunc);
+
     Statement *elsestmt = NULL;
     if (L->current.ID == TOKEN_ELSE)
     {
@@ -1370,7 +1376,6 @@ Statement *parse_compound(lexer *L, Function *currentFunc)
     token save_struct;
     while (L->current.ID != TOKEN_RBRACE)
     {
-
         clear_lookahead(&buf);
         isConst = false;
         isStruct = false;
@@ -1420,6 +1425,7 @@ Statement *parse_compound(lexer *L, Function *currentFunc)
         }
         else
         {
+
             bool flag = true;
             do
             {
@@ -1432,16 +1438,20 @@ Statement *parse_compound(lexer *L, Function *currentFunc)
                 if (L->current.ID != TOKEN_LBRACKET && L->current.ID != TOKEN_SEMICOLON)
                 {
 
+
                     if (((buf.tokens[0].ID == TOKEN_TYPE || buf.tokens[0].ID == TOKEN_STRUCT) && buf.tokens[1].ID == TOKEN_IDENTIFIER))
                         stmts[count++] = parser_statement(L, &buf, false, isConst, currentFunc);
                     if (L->current.ID == TOKEN_IDENTIFIER)
                     {
-
                         buf.tokens[1] = L->current;
                         getNextToken(L);
+
+
                         if (L->current.ID == TOKEN_EQUAL)
                         {
+ 
                             stmts[count++] = parser_statement(L, &buf, false, isConst, currentFunc);
+
                             getNextToken(L);
                             flag = false;
                         }

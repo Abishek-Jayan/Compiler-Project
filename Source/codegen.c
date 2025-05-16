@@ -218,11 +218,11 @@ static void emit_function(CodegenContext *ctx, Function *func)
         emit(ctx, "return");
     }
     else if (func->returnType.base != BASE_VOID && !ctx->indeadcode)
-        {
-            emit(ctx, "iconst_0");
-            emit(ctx, "ireturn");
-        }
-    
+    {
+        emit(ctx, "iconst_0");
+        emit(ctx, "ireturn");
+    }
+
     emit(ctx, ".end code");
     fprintf(ctx->output, ".end method\n\n");
 }
@@ -391,7 +391,6 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
         {
             emit(ctx, "; for update at %s line %d", ctx->infilename, stmt->lineno);
             emit_expression(ctx, stmt->u.forstmt->update);
-
         }
         emit(ctx, "L%d:", label_start); // L1
         if (stmt->u.forstmt->condition)
@@ -504,7 +503,7 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
             emit(ctx, "dup");
             ctx->stacksize++;
             emit(ctx, expr->op == OP_AND ? "ifeq L%d" : "ifne L%d", label_shortcircuit);
-            if(ctx->stacksize > 0)
+            if (ctx->stacksize > 0)
             {
                 emit(ctx, "pop");
                 ctx->stacksize--;
@@ -681,8 +680,8 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
                 emit(ctx, "putstatic Field %.*s %s %s",
                      (int)(strlen(ctx->infilename) - 2), ctx->infilename,
                      vs->name, get_jvm_type(&vs->type));
-                if(dupflag && ctx->stacksize > 0)
-                     ctx->stacksize--;
+                if (dupflag && ctx->stacksize > 0)
+                    ctx->stacksize--;
             }
             else
             {
@@ -690,8 +689,8 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
                 emit(ctx, "%sstore %d ; %s",
                      vs->type.base == BASE_FLOAT ? "f" : "i",
                      vs->localIndex, vs->name);
-                if(ctx->stacksize>0)
-                     ctx->stacksize--;
+                if (ctx->stacksize > 0)
+                    ctx->stacksize--;
             }
         }
         break;
@@ -780,12 +779,12 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
                 emit(ctx, "iconst_1");
                 ctx->stacksize++;
                 emit(ctx, expr->op == OP_INC ? "iadd" : "isub");
-                if(ctx->stacksize>0)
+                if (ctx->stacksize > 0)
                     ctx->stacksize--;
                 emit(ctx, "putstatic Field %.*s %s %s",
                      (int)(strlen(ctx->infilename) - 2), ctx->infilename,
                      vs->name, get_jvm_type(&vs->type));
-                if(ctx->stacksize>0)
+                if (ctx->stacksize > 0)
                     ctx->stacksize--;
             }
             else
@@ -805,6 +804,10 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
         {
             emit(ctx, "i2f ; cast int to float");
         }
+        else if (expr->exprType.base == BASE_CHAR && expr->left->exprType.base == BASE_INT)
+        {
+            emit(ctx, "i2c ; cast int to char");
+        }
         else if (!(expr->exprType.base == BASE_INT && expr->left->exprType.base == BASE_CHAR))
         {
             fprintf(stderr, "Code generation error in file %s line %d: Unsupported cast type\n",
@@ -815,7 +818,7 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
     case EXPR_INDEX:
         emit_expression(ctx, expr->left);
         emit_expression(ctx, expr->right);
-        if(ctx->stacksize > 0)
+        if (ctx->stacksize > 0)
             ctx->stacksize--;
         if (expr->exprType.base == BASE_INT)
         {
