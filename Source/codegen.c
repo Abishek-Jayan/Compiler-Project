@@ -730,9 +730,9 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
     }
     break;
     case EXPR_UNARY:
-        emit_expression(ctx, expr->right);
         if (expr->op == OP_NEG)
         {
+            emit_expression(ctx, expr->right);
             emit(ctx, "%sneg", expr->exprType.base == BASE_FLOAT ? "f" : "i");
         }
         else if (expr->op == OP_INC || expr->op == OP_DEC)
@@ -755,6 +755,8 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
                 emit(ctx, expr->op == OP_INC ? "iadd" : "isub");
                 if (ctx->stacksize > 0)
                     ctx->stacksize--;
+                emit(ctx, "dup");
+                ctx->stacksize++;
                 emit(ctx, "putstatic Field %.*s %s %s",
                      (int)(strlen(ctx->infilename) - 2), ctx->infilename,
                      vs->name, get_jvm_type(&vs->type));
