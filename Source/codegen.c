@@ -210,7 +210,7 @@ static void emit_function(CodegenContext *ctx, Function *func)
     strcat(signature, get_jvm_type(&func->returnType));
 
     fprintf(ctx->output, ".method public static %s : %s\n", func->name, signature);
-    emit(ctx, ".code stack %d locals %d", ctx->maxstacksize < 2 ? 2 : ctx->maxstacksize, ctx->localcount);
+    emit(ctx, ".code stack %d locals %d", ctx->maxstacksize < 4 ? 4 : ctx->maxstacksize, ctx->localcount);
     emit_statement(ctx, func->body);
 
     if (func->returnType.base == BASE_VOID && !ctx->indeadcode)
@@ -249,9 +249,9 @@ static bool has_break_statement(Statement *stmt)
     case STMT_WHILE:
     case STMT_DO:
     case STMT_FOR:
-        return has_break_statement(stmt->u.forstmt->body); // Recurse into loop body
+        return has_break_statement(stmt->u.forstmt->body);
     default:
-        return false; // Other statements (EXPR, RETURN, DECL, etc.) don’t contain break
+        return false;
     }
 }
 
@@ -392,17 +392,17 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
             emit(ctx, "; for update at %s line %d", ctx->infilename, stmt->lineno);
             emit_expression(ctx, stmt->u.forstmt->update);
         }
-        emit(ctx, "L%d:", label_start); // L1
+        emit(ctx, "L%d:", label_start);
         if (stmt->u.forstmt->condition)
         {
             emit_expression(ctx, stmt->u.forstmt->condition);
-            emit(ctx, "ifne L%d", label_body); // ifne L2
+            emit(ctx, "ifne L%d", label_body);
         }
         else
         {
-            emit(ctx, "goto L%d", label_body); // Infinite loop
+            emit(ctx, "goto L%d", label_body);
         }
-        emit(ctx, "L%d:", label_end); // L4
+        emit(ctx, "L%d:", label_end);
         emit(ctx, "; end for loop at %s line %d", ctx->infilename, stmt->lineno);
         ctx->curloopstart = old_start;
         ctx->curloopend = old_end;
@@ -542,35 +542,16 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
                     emit(ctx, "irem");
                     break;
                 case OP_EQ:
-                    emit(ctx, "isub");
-                    emit(ctx, "ifeq L%d", ctx->labelcount);
-                    emit(ctx, "iconst_0");
-                    emit(ctx, "goto L%d", ctx->labelcount + 1);
-                    emit(ctx, "L%d:", ctx->labelcount++);
-                    emit(ctx, "iconst_1");
-                    emit(ctx, "L%d:", ctx->labelcount++);
-                    break;
                 case OP_NE:
-                    emit(ctx, "isub");
-                    emit(ctx, "ifne L%d", ctx->labelcount);
-                    emit(ctx, "iconst_0");
-                    emit(ctx, "goto L%d", ctx->labelcount + 1);
-                    emit(ctx, "L%d:", ctx->labelcount++);
-                    emit(ctx, "iconst_1");
-                    emit(ctx, "L%d:", ctx->labelcount++);
-                    break;
                 case OP_LT:
-                    emit(ctx, "isub");
-                    emit(ctx, "iflt L%d", ctx->labelcount);
-                    emit(ctx, "iconst_0");
-                    emit(ctx, "goto L%d", ctx->labelcount + 1);
-                    emit(ctx, "L%d:", ctx->labelcount++);
-                    emit(ctx, "iconst_1");
-                    emit(ctx, "L%d:", ctx->labelcount++);
-                    break;
                 case OP_LE:
+                case OP_GE:
                     emit(ctx, "isub");
-                    emit(ctx, "ifle L%d", ctx->labelcount);
+                    emit(ctx, expr->op == OP_EQ ? "ifeq L%d" : expr->op == OP_NE ? "ifne L%d"
+                                                           : expr->op == OP_LT   ? "iflt L%d"
+                                                           : expr->op == OP_LE   ? "ifle L%d"
+                                                                                 : "ifge L%d",
+                         ctx->labelcount);
                     emit(ctx, "iconst_0");
                     emit(ctx, "goto L%d", ctx->labelcount + 1);
                     emit(ctx, "L%d:", ctx->labelcount++);
@@ -578,26 +559,13 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
                     emit(ctx, "L%d:", ctx->labelcount++);
                     break;
                 case OP_GT:
-                    emit_expression(ctx, expr->left);
-                    emit_expression(ctx, expr->right);
-                    ctx->stacksize -= 1;
-                    int label_false = ctx->labelcount++;
-                    emit(ctx, "if_icmple L%d", label_false);
+                    emit(ctx, "if_icmple L%d", ctx->labelcount); // Compare directly
                     emit(ctx, "iconst_1");
-                    int label_end = ctx->labelcount++;
-                    emit(ctx, "goto L%d", label_end);
-                    emit(ctx, "L%d:", label_false);
-                    emit(ctx, "iconst_0");
-                    emit(ctx, "L%d:", label_end);
-                    break;
-                case OP_GE:
-                    emit(ctx, "isub");
-                    emit(ctx, "ifge L%d", ctx->labelcount);
-                    emit(ctx, "iconst_0");
                     emit(ctx, "goto L%d", ctx->labelcount + 1);
-                    emit(ctx, "L%d:", ctx->labelcount++);
-                    emit(ctx, "iconst_1");
-                    emit(ctx, "L%d:", ctx->labelcount++);
+                    emit(ctx, "L%d:", ctx->labelcount++); // False label
+                    emit(ctx, "iconst_0");
+                    emit(ctx, "L%d:", ctx->labelcount++);                  // End label
+                    ctx->stacksize = left_stacksize + right_stacksize - 1; // Stack has result
                     break;
                 default:
                     fprintf(stderr, "Code generation error in file %s line %d: Unsupported binary operator\n",
@@ -628,6 +596,7 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
                 }
             }
         }
+
         break;
     case EXPR_ASSIGN:
         if (expr->left->kind == EXPR_INDEX)
