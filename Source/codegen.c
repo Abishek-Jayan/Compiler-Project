@@ -511,6 +511,11 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
             emit_expression(ctx, expr->right);
             emit(ctx, "goto L%d", label_end);
             emit(ctx, "L%d:", label_shortcircuit);
+            if (ctx->stacksize > 0)
+            {
+                emit(ctx, "pop");
+                ctx->stacksize--;
+            }
             emit(ctx, expr->op == OP_AND ? "iconst_0" : "iconst_1");
             ctx->stacksize++;
             emit(ctx, "L%d:", label_end);
