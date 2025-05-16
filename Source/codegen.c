@@ -213,18 +213,16 @@ static void emit_function(CodegenContext *ctx, Function *func)
     emit(ctx, ".code stack %d locals %d", ctx->maxstacksize < 2 ? 2 : ctx->maxstacksize, ctx->localcount);
     emit_statement(ctx, func->body);
 
-    if (func->returnType.base == BASE_VOID)
+    if (func->returnType.base == BASE_VOID && !ctx->indeadcode)
     {
         emit(ctx, "return");
     }
-    else
-    {
-        if (!ctx->indeadcode)
+    else if (func->returnType.base != BASE_VOID && !ctx->indeadcode)
         {
             emit(ctx, "iconst_0");
             emit(ctx, "ireturn");
         }
-    }
+    
     emit(ctx, ".end code");
     fprintf(ctx->output, ".end method\n\n");
 }
@@ -269,9 +267,10 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
         {
             emit(ctx, "; expression statement at %s line %d", ctx->infilename, stmt->lineno);
             emit_expression(ctx, stmt->u.expr);
-            if (stmt->u.expr->kind != EXPR_ASSIGN && stmt->u.expr->exprType.base != BASE_VOID)
+            if (stmt->u.expr->kind != EXPR_ASSIGN && stmt->u.expr->exprType.base != BASE_VOID && ctx->stacksize > 0)
             {
                 emit(ctx, "pop");
+                ctx->stacksize--;
             }
         }
         break;
@@ -370,6 +369,7 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
         old_in_loop = ctx->inloop;
         label_end = ctx->labelcount++;
         label_start = ctx->labelcount++;
+        int label_body = ctx->labelcount++;
         ctx->curloopstart = label_start;
         ctx->curloopend = label_end;
         ctx->inloop = true;
@@ -384,25 +384,26 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
             emit(ctx, "; for initialization at %s line %d", ctx->infilename, stmt->lineno);
             emit_statement(ctx, stmt->u.forstmt->init);
         }
-        emit(ctx, "L%d:", label_start);
-
-        if (stmt->u.forstmt->condition)
-        {
-            emit_expression(ctx, stmt->u.forstmt->condition);
-            emit(ctx, "ifeq L%d", label_end);
-        }
+        emit(ctx, "goto L%d", label_start);
+        emit(ctx, "L%d:", label_body);
         emit_statement(ctx, stmt->u.forstmt->body);
         if (stmt->u.forstmt->update)
         {
+            emit(ctx, "; for update at %s line %d", ctx->infilename, stmt->lineno);
             emit_expression(ctx, stmt->u.forstmt->update);
-            if (stmt->u.forstmt->update->exprType.base != BASE_VOID)
-            {
-                emit(ctx, "pop");
-            }
+
         }
-        emit(ctx, "; empty for condition");
-        emit(ctx, "goto L%d", label_start);
-        emit(ctx, "L%d:", label_end);
+        emit(ctx, "L%d:", label_start); // L1
+        if (stmt->u.forstmt->condition)
+        {
+            emit_expression(ctx, stmt->u.forstmt->condition);
+            emit(ctx, "ifne L%d", label_body); // ifne L2
+        }
+        else
+        {
+            emit(ctx, "goto L%d", label_body); // Infinite loop
+        }
+        emit(ctx, "L%d:", label_end); // L4
         emit(ctx, "; end for loop at %s line %d", ctx->infilename, stmt->lineno);
         ctx->curloopstart = old_start;
         ctx->curloopend = old_end;
@@ -503,8 +504,11 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
             emit(ctx, "dup");
             ctx->stacksize++;
             emit(ctx, expr->op == OP_AND ? "ifeq L%d" : "ifne L%d", label_shortcircuit);
-            emit(ctx, "pop");
-            ctx->stacksize--;
+            if(ctx->stacksize > 0)
+            {
+                emit(ctx, "pop");
+                ctx->stacksize--;
+            }
             emit_expression(ctx, expr->right);
             emit(ctx, "goto L%d", label_end);
             emit(ctx, "L%d:", label_shortcircuit);
@@ -667,15 +671,18 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
             }
             if (vs->isGlobal)
             {
+                bool dupflag = false;
                 if (expr->right->kind == EXPR_BINARY)
                 {
                     emit(ctx, "dup");
+                    dupflag = true;
                     ctx->stacksize++;
                 }
                 emit(ctx, "putstatic Field %.*s %s %s",
                      (int)(strlen(ctx->infilename) - 2), ctx->infilename,
                      vs->name, get_jvm_type(&vs->type));
-                ctx->stacksize--;
+                if(dupflag && ctx->stacksize > 0)
+                     ctx->stacksize--;
             }
             else
             {
@@ -683,7 +690,8 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
                 emit(ctx, "%sstore %d ; %s",
                      vs->type.base == BASE_FLOAT ? "f" : "i",
                      vs->localIndex, vs->name);
-                ctx->stacksize--;
+                if(ctx->stacksize>0)
+                     ctx->stacksize--;
             }
         }
         break;
@@ -772,11 +780,13 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
                 emit(ctx, "iconst_1");
                 ctx->stacksize++;
                 emit(ctx, expr->op == OP_INC ? "iadd" : "isub");
-                ctx->stacksize--;
+                if(ctx->stacksize>0)
+                    ctx->stacksize--;
                 emit(ctx, "putstatic Field %.*s %s %s",
                      (int)(strlen(ctx->infilename) - 2), ctx->infilename,
                      vs->name, get_jvm_type(&vs->type));
-                ctx->stacksize--;
+                if(ctx->stacksize>0)
+                    ctx->stacksize--;
             }
             else
             {
@@ -805,7 +815,8 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
     case EXPR_INDEX:
         emit_expression(ctx, expr->left);
         emit_expression(ctx, expr->right);
-        ctx->stacksize--;
+        if(ctx->stacksize > 0)
+            ctx->stacksize--;
         if (expr->exprType.base == BASE_INT)
         {
             emit(ctx, "iaload");
