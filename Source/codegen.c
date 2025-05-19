@@ -157,7 +157,7 @@ static void emit_clinit(CodegenContext *ctx)
     VarSymbol *var = varSymbols;
     while (var)
     {
-        if (var->isGlobal && (var->type.isArray || /* initialized */ false))
+        if (var->isGlobal && var->type.isArray)
         {
             needed = true;
             break;
@@ -169,6 +169,32 @@ static void emit_clinit(CodegenContext *ctx)
 
     fprintf(ctx->output, ".method <clinit> : ()V\n");
     emit(ctx, ".code stack 2 locals 0");
+
+    var = varSymbols;
+    while (var)
+    {
+        if (var->isGlobal && var->type.isArray)
+        {
+            emit(ctx, "; initializing variable at %s", ctx->infilename);
+            emit(ctx, "bipush 100"); // Default size 100
+            if (var->type.base == BASE_INT)
+                emit(ctx, "newarray int");
+            else if (var->type.base == BASE_CHAR)
+                emit(ctx, "newarray char");
+            else if (var->type.base == BASE_FLOAT)
+                emit(ctx, "newarray float");
+            else
+            {
+                fprintf(stderr, "Code generation error: Unsupported array type for %s\n", var->name);
+                exit(1);
+            }
+            emit(ctx, "putstatic Field %.*s %s %s",
+                 (int)(strlen(ctx->infilename) - 2), ctx->infilename,
+                 var->name, get_jvm_type(&var->type));
+        }
+        var = var->next;
+    }
+
     emit(ctx, "return");
     emit(ctx, ".end code");
     fprintf(ctx->output, ".end method\n\n");
@@ -210,7 +236,7 @@ static void emit_function(CodegenContext *ctx, Function *func)
     strcat(signature, get_jvm_type(&func->returnType));
 
     fprintf(ctx->output, ".method public static %s : %s\n", func->name, signature);
-    emit(ctx, ".code stack %d locals %d", ctx->maxstacksize < 4 ? 4 : ctx->maxstacksize, ctx->localcount);
+    emit(ctx, ".code stack %d locals %d", ctx->maxstacksize < 18 ? 18 : ctx->maxstacksize, ctx->localcount);
     emit_statement(ctx, func->body);
 
     if (func->returnType.base == BASE_VOID && !ctx->indeadcode)
@@ -267,7 +293,7 @@ static void emit_statement(CodegenContext *ctx, Statement *stmt)
         {
             emit(ctx, "; expression statement at %s line %d", ctx->infilename, stmt->lineno);
             emit_expression(ctx, stmt->u.expr);
-            if (stmt->u.expr->kind != EXPR_ASSIGN && stmt->u.expr->exprType.base != BASE_VOID && ctx->stacksize > 0)
+            if (stmt->u.expr->exprType.base != BASE_VOID && ctx->stacksize > 0)
             {
                 emit(ctx, "pop");
                 ctx->stacksize--;
@@ -439,7 +465,12 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
     {
     case EXPR_LITERAL:
         ctx->stacksize++;
-        if (expr->exprType.base == BASE_INT)
+        if (expr->exprType.isArray && expr->exprType.base == BASE_CHAR)
+        {
+            emit(ctx, "ldc %s", expr->value);
+            emit(ctx, "invokestatic Method lib440 java2c (Ljava/lang/String;)[C");
+        }
+        else if (expr->exprType.base == BASE_INT)
         {
             int val = atoi(expr->value);
             if (val >= -1 && val <= 5)
@@ -457,16 +488,30 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
         }
         else if (expr->exprType.base == BASE_CHAR)
         {
-            emit(ctx, "bipush %d", expr->value[1]); // Handle 'c'
+            emit(ctx, "bipush %d", expr->value[1]);
         }
         else if (expr->exprType.base == BASE_FLOAT)
         {
-            emit(ctx, "ldc %s", expr->value);
+            float val = atof(expr->value);
+            if (val == 0.0f)
+            {
+                emit(ctx, "fconst_0");
+            }
+            else if (val == 1.0f)
+            {
+                emit(ctx, "fconst_1");
+            }
+            else if (val == 2.0f)
+            {
+                emit(ctx, "fconst_2");
+            }
+            else
+            {
+                emit(ctx, "ldc %sf", expr->value);
+            }
         }
         else if (expr->exprType.isArray && expr->exprType.base == BASE_CHAR)
         {
-            emit(ctx, "ldc \"%s\"", expr->value);
-            emit(ctx, "invokestatic Method lib440 java2c (Ljava/lang/String;)[C");
         }
         break;
     case EXPR_IDENTIFIER:
@@ -608,20 +653,40 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
         {
             Expression *arrayExpr = expr->left->left;
             Expression *indexExpr = expr->left->right;
-            emit_expression(ctx, arrayExpr);
-            emit_expression(ctx, indexExpr);
-            emit_expression(ctx, expr->right);
-            ctx->stacksize -= 2;
+
+            if (expr->right->kind == EXPR_BINARY && expr->right->op == OP_PLUS)
+            {
+                emit_expression(ctx, arrayExpr);
+                emit(ctx, "dup");
+                ctx->stacksize++;
+                emit_expression(ctx, indexExpr);
+                emit(ctx, "dup_x1");
+                ctx->stacksize++;
+                emit(ctx, "iaload");
+                ctx->stacksize--;
+                emit_expression(ctx, expr->right->right);
+                emit(ctx, "iadd");
+                ctx->stacksize--;
+            }
+            else
+            {
+                emit_expression(ctx, arrayExpr);
+                emit_expression(ctx, indexExpr);
+                emit_expression(ctx, expr->right);
+            }
             if (expr->left->exprType.base == BASE_INT)
             {
+                emit(ctx, "dup_x2");
                 emit(ctx, "iastore");
             }
             else if (expr->left->exprType.base == BASE_CHAR)
             {
+                emit(ctx, "dup_x2");
                 emit(ctx, "castore");
             }
             else if (expr->left->exprType.base == BASE_FLOAT)
             {
+                emit(ctx, "dup_x2");
                 emit(ctx, "fastore");
             }
             else
@@ -630,7 +695,6 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
                         ctx->infilename, expr->lineno);
                 exit(1);
             }
-            emit_expression(ctx, expr->left);
         }
         else
         {
@@ -644,27 +708,20 @@ static void emit_expression(CodegenContext *ctx, Expression *expr)
             }
             if (vs->isGlobal)
             {
-                bool dupflag = false;
-                if (expr->right->kind == EXPR_BINARY)
-                {
-                    emit(ctx, "dup");
-                    dupflag = true;
-                    ctx->stacksize++;
-                }
+
+                emit(ctx, "dup");
+
                 emit(ctx, "putstatic Field %.*s %s %s",
                      (int)(strlen(ctx->infilename) - 2), ctx->infilename,
                      vs->name, get_jvm_type(&vs->type));
-                if (dupflag && ctx->stacksize > 0)
-                    ctx->stacksize--;
             }
             else
             {
+                emit(ctx, "dup");
 
                 emit(ctx, "%sstore %d ; %s",
                      vs->type.base == BASE_FLOAT ? "f" : "i",
                      vs->localIndex, vs->name);
-                if (ctx->stacksize > 0)
-                    ctx->stacksize--;
             }
         }
         break;

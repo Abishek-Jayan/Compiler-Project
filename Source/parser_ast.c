@@ -852,7 +852,7 @@ Expression *parse_unary(lexer *L, Function *currentFunc)
     {
         getNextToken(L);
 
-        if (L->current.ID == TOKEN_IDENTIFIER || L->current.ID == TOKEN_TYPE)
+        if (L->current.ID == TOKEN_TYPE)
         {
             char typeName[64];
             strncpy(typeName, L->current.attrb, sizeof(typeName) - 1);
